@@ -1,0 +1,63 @@
+# Bug Report Template
+
+## Descrição do Problema
+
+Explique claramente o bug.
+
+---
+
+## Comportamento Esperado
+
+O que deveria acontecer?
+
+---
+
+## Comportamento Atual
+
+O que está acontecendo?
+
+---
+
+## Passos Para Reproduzir
+
+1.
+2.
+3.
+
+---
+
+## Ambiente
+
+- Plataforma:
+- Página:
+- Dispositivo:
+- Navegador:
+- Versão:
+
+---
+
+## Evidências
+
+- Screenshot:
+- Vídeo:
+- Logs:
+- Stack trace:
+
+---
+
+## Impacto
+
+- Baixo
+- Médio
+- Alto
+- Crítico
+
+---
+
+## Frequência
+
+- Sempre
+- Intermitente
+- Raro
+
+---

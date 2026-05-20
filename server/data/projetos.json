@@ -1,0 +1,17 @@
+[
+  {
+    "id": "proj_1779061266926",
+    "titulo": "Plano de estudo",
+    "descricao": "",
+    "etapas": [
+      {
+        "titulo": "Baixar python",
+        "concluida": false
+      }
+    ],
+    "diagrama": "baixar python, depois abrir a pagina do curso, depois organizar um docmento para estudar, depois iniciar as aulas\n",
+    "status": "ativo",
+    "criadoEm": "2026-05-17T23:41:06.926Z",
+    "atualizadoEm": "2026-05-17T23:42:25.070Z"
+  }
+]

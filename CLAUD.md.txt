@@ -1,0 +1,121 @@
+# Fluxo — Organizador de Vida Inteligente
+
+## Visão central
+"Fluxo organiza sua vida por você e reduz o caos mental."
+
+NÃO é agenda gamificada, sistema de tarefas ou painel de performance.
+É uma mente inteligente ajudando o usuário a reorganizar a própria vida.
+
+Toda decisão de produto responde:
+"Isso aumenta a sensação de clareza e controle mental do usuário?"
+
+## Stack
+- Frontend: React + Tailwind CSS + Vite
+- Backend: Node.js + Express
+- IA: Claude API — modelo claude-sonnet-4-5
+- Storage: localStorage (MVP) → Supabase no futuro
+- Diagramas: Mermaid.js (Aba Projetos)
+- Acesso: http://localhost:5173 (client) | http://localhost:3001 (server)
+
+## Estrutura de arquivos relevantes
+client/src/
+├── App.jsx
+├── components/
+│   ├── chat/
+│   ├── dashboard/
+│   ├── gamificacao/
+│   ├── onboarding/
+│   ├── routine/
+│   ├── projetos/
+│   ├── shared/
+│   ├── TaskList.jsx
+│   ├── WeekView.jsx
+│   ├── EstadoSemana.jsx
+│   ├── DiagnosticCard.jsx
+│   ├── NextActionCard.jsx
+│   └── InputArea.jsx
+server/
+├── index.js
+├── services/
+│   ├── flora.js        ← cérebro da IA
+│   ├── userMemory.js   ← memória permanente
+│   └── userContext.js
+└── data/
+├── floraQuestions.js
+└── knowledge/
+
+## Design
+- Fundo atual: #0f0f13 | Acento: #f59e0b (dourado)
+- Fontes: Syne (títulos) + DM Sans (corpo)
+- Mobile-first sempre
+- Redesign planejado: referência Duolingo + Calm
+  (clean, leve, respirável, fluido — Prompt 8)
+
+## A Flora
+IA interna do Fluxo. Amiga extremamente organizada.
+NÃO parece: terapeuta, namorada virtual, IA carente, mãe controladora.
+PARECE: amiga que ajuda a destravar a vida sem drama e sem pressão.
+
+Regras obrigatórias:
+- Sempre termina com pergunta
+- Respostas curtas, leves e diretas
+- Confirma ANTES de remover qualquer coisa
+- Injeta data/hora real em CADA chamada à API
+- Injeta agenda do dia e horários livres em cada chamada
+- Nunca sugere horário já ocupado
+- Distingue cancelamento pontual vs mudança de rotina
+- Distingue conflito consciente vs erro de sugestão
+- Nunca classifica saúde, lesão ou hábito novo como gargalo
+
+## Categorias de tarefas
+🔴 Fixo — inegociável (trabalho)
+🟡 Rotina — flexível mas importante (academia, estudo)
+🟣 Compromisso — pontual com data/hora
+🔵 Lembrete — pendência sem horário
+🟢 Tarefa — ação pontual com prazo
+
+## Gamificação
+Princípio: reforça progresso sem gerar culpa.
+Usuário com falha deve querer voltar, não ter vergonha de abrir.
+- SEM ranking com usuários fictícios
+- SEM mensagens punitivas de streak
+- COM celebração de conquistas e subida de nível
+- COM badges normais e secretas
+- Streak zera ao quebrar (consequência existe) mas sem drama
+
+## Funcionalidades implementadas
+- Chat com Flora em linguagem natural
+- Onboarding simplificado (4 telas — nome, ocupação, dificuldade, boas-vindas)
+- Calendário semanal interativo com navegação entre semanas
+- Tarefas recorrentes com sistema de exceções pontuais
+- Aba Rotina (estilo Google Agenda)
+- Aba Tarefas — painel do dia completo
+- Estado da Semana (substituiu score numérico)
+- Card "Onde você está perdendo tempo"
+- Card "Próxima ação"
+- Quick Replies clicáveis
+- Memória permanente (userMemory.js)
+- Streaming de resposta
+- Gamificação: pontos, níveis, badges, streak, histórico
+
+## Próximas funcionalidades (não implementar sem instrução)
+- Modo Caos: botão "Estou perdido" → Flora simplifica o dia
+- Lacunas Inteligentes: microintervalos com atividades preparadas
+- Ritual de fechamento: check-in noturno (20h–23h, 2 min)
+- Rotinas temporárias: pausa por lesão/viagem + retorno automático
+- Aba Projetos: mapa mental com Mermaid.js
+- PWA instalável + notificações push
+- Deploy real: Vercel + Supabase
+- Redesign completo (Prompt 8)
+
+## Idioma
+Todo texto da interface e da IA em português brasileiro.
+
+## Variável de ambiente
+ANTHROPIC_API_KEY para a Claude API (server/.env)
+
+## Ecossistema Tempo (visão futura)
+Fluxo → identifica gargalos → recomenda Tempo Store
+Canal Faceless → funil de aquisição
+Consultoria de Automação → LaboReport é o caso 0
+Manter arquitetura limpa para crescer nessa direção.

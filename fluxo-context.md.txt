@@ -1,0 +1,466 @@
+# FLUXO APP — CONTEXTO COMPLETO PARA CLAUDE CODE
+*Atualizado: 16/05/2026*
+
+---
+
+## 1. VISÃO & PROBLEMA
+
+**Problema:**
+Ferramentas como Notion, Trello e Google Agenda exigem que o
+usuário já seja organizado pra usá-las. A maioria abandona em dias.
+
+**Solução:**
+Fluxo organiza sua vida por você via linguagem natural.
+Você fala, a Flora entende, organiza e devolve um plano claro.
+
+**Posicionamento central:**
+"Fluxo organiza sua vida por você e reduz o caos mental."
+
+NÃO é percebido como:
+- agenda gamificada
+- sistema de tarefas
+- painel de performance
+- app de maximização de tempo
+
+É percebido como:
+"uma mente inteligente ajudando o usuário a reorganizar
+a própria vida — sem culpa, sem pressão, com clareza."
+
+**Funciona melhor quando:**
+reduz ansiedade, cria clareza, mostra direção, transforma
+caos em plano.
+
+**Funciona pior quando:**
+parece julgamento, transforma vida em pontuação, cria culpa,
+sobrecarrega cognitivamente.
+
+**Pergunta que guia toda decisão de produto:**
+"Isso aumenta a sensação de clareza e controle mental
+do usuário?"
+
+**Público:** Estudantes, freelancers, profissionais
+sobrecarregados, pessoas com TDAH, qualquer um que sente
+que o tempo escapa.
+
+**Monetização:** Freemium → plano pago R$ 29–79/mês.
+
+---
+
+## 2. COMO FUNCIONA
+Usuário fala com Flora em linguagem natural
+↓
+Flora entende, organiza, distribui na semana
+↓
+Dashboard atualizado + Estado da Semana em linguagem natural
+↓
+Flora cobra compromissos, celebra conquistas, sugere próxima ação
+↓
+Usuário marca como feito → pontos → gamificação leve
+
+---
+
+## 3. STACK TÉCNICO
+
+- **Frontend:** React + Tailwind CSS
+- **Backend:** Node.js + Express
+- **IA:** Claude API — modelo `claude-sonnet-4-5`
+- **Storage:** localStorage (MVP) → Supabase no Prompt 7
+- **Diagramas:** Mermaid.js (Aba Projetos — Prompt 5B)
+- **Build:** Vite
+- **Pasta:** `C:\Users\W10\Documents\Fluxo App`
+- **Frontend:** http://localhost:5173
+- **Backend:** http://localhost:3001
+
+**Estrutura de arquivos:**
+Fluxo App/
+├── client/src/
+│   ├── App.jsx
+│   ├── components/
+│   │   ├── chat/
+│   │   ├── dashboard/
+│   │   ├── gamificacao/
+│   │   ├── onboarding/
+│   │   ├── routine/
+│   │   ├── shared/
+│   │   ├── projetos/        ← criar no Prompt 5B
+│   │   ├── TaskList.jsx
+│   │   ├── WeekView.jsx
+│   │   ├── ScoreRing.jsx    ← substituir por EstadoSemana
+│   │   ├── DiagnosticCard.jsx
+│   │   ├── NextActionCard.jsx
+│   │   └── InputArea.jsx
+│   └── utils/
+└── server/
+├── index.js
+├── services/
+│   ├── flora.js         ← cérebro da IA
+│   ├── userMemory.js    ← memória permanente
+│   ├── userContext.js
+│   └── googleCalendar.js ← estrutura futura
+└── data/
+├── floraQuestions.js
+└── knowledge/
+
+---
+
+## 4. DESIGN & TOM
+
+**Design atual (dark, MVP):**
+- Fundo: `#0f0f13`
+- Acento: `#f59e0b` (dourado/âmbar)
+- Fontes: Syne (títulos) + DM Sans (corpo)
+- Mobile-first, visual premium
+
+**Redesign planejado (Prompt 8):**
+- Referências emocionais: Duolingo (leveza, personalidade)
+  + Calm (respiro, suavidade)
+- Fundo: branco/off-white `#fafafa`
+- Manter dourado da Flora
+- Secundário: verde-água ou azul suave
+- Conceito visual: FLUIDEZ — bordas arredondadas, gradientes,
+  formas orgânicas, muito respiro
+- Avatar visual pra Flora (hoje só letra "F")
+- Usar skill `frontend-design` do Claude
+- Menos "dashboard", mais "clareza"
+- Menos densidade cognitiva, mais respiro psicológico
+
+**Tom do app:**
+- Leve, humano, sem pressão, sem culpa
+- "O que você tem pela frente?" nunca "Adicionar tarefa"
+- Usuário abre o Fluxo e sente: "minha vida parece mais
+  organizada agora" — não "tenho mais um sistema pra gerenciar"
+
+**Tom da Flora:**
+- Amiga extremamente organizada que ajuda a destravar a vida
+- Respostas curtas, leves, diretas
+- NÃO parece: terapeuta, namorada virtual, IA carente,
+  mãe controladora
+
+---
+
+## 5. FLORA
+
+**Regras de comportamento:**
+- Sempre termina com pergunta
+- Respostas curtas e diretas (não longas e emocionais)
+- Confirma ANTES de remover qualquer coisa da agenda
+- Distingue cancelamento pontual vs mudança de rotina
+- Distingue conflito consciente vs erro de sugestão
+- Nunca esquece dados que o usuário já informou
+- Consulta agenda completa antes de sugerir horários
+- Nunca sugere horário já ocupado
+- Injeta data/hora real em CADA chamada à API
+- Injeta compromissos do dia e horários livres em cada chamada
+
+**Injetar em CADA chamada à API:**
+```javascript
+const agora = new Date();
+// "DATA E HORA EXATA AGORA: [dia], [data]. Hora: [hora]."
+// "COMPROMISSOS DE HOJE: [lista com horários]"
+// "COMPROMISSOS DE AMANHÃ: [lista com horários]"
+// "HORÁRIOS LIVRES: [blocos vazios calculados]"
+```
+
+**Memória permanente (userMemory.js):**
+```javascript
+{
+  identidade: { nome, idade, ocupacao },
+  trabalho: { horarioEntrada, horarioSaida, localizacao,
+    tempoDeslocamentoIda, tempoDeslocamentoVolta,
+    meioTransporteIda, meioTransporteVolta },
+  moradia: { cidade, bairro, temCarroOuMoto },
+  academia: { localizacao, distanciaDoTrabalho, distanciaDeCasa },
+  atividades: { lista: [] },
+  sono: { horarioDormir, horarioAcordar, qualidade },
+  energia: { picoManha, picoTarde, picoNoite, cansadoNaVolta },
+  financas: { situacaoAtual, metaFinanceira, gastosFixos,
+    toleranciaUber },
+  objetivos: { curto, medio, longo, sonhos, medos },
+  perdaTempo: { identificados, sugestoesAprovadas },
+  pessoasImportantes: { lista: [] },
+  gamificacao: { pontos, nivel, streak, badges, historicoPontos },
+  notas: [],
+  checkIns: [],
+  microintervalos: { atividadesPreparadas: [] }
+}
+```
+
+**Regras de perdaTempo:**
+- GARGALO: tempo perdido sem retorno (transporte excessivo,
+  espera, distração, retrabalho)
+- NUNCA gargalo: saúde, lesão, hábito novo sendo construído,
+  adaptação planejada, pausa temporária
+
+---
+
+## 6. DASHBOARD — NOVA DIREÇÃO
+
+**O coração do dashboard NÃO é mais:**
+- score numérico como protagonista
+- pontos em destaque
+- painel de performance
+
+**O coração do dashboard É:**
+"Como sua semana está se sentindo" — Estado da Semana
+
+**Formato do Estado da Semana (gerado pela Flora):**
+
+Exemplo 1:
+🌊 Sua semana está fluindo bem.
+Você equilibrou obrigações, descanso e tempo pessoal.
+Principal gargalo hoje: transporte.
+
+Exemplo 2:
+⚠️ Sua semana está fragmentada.
+Você tem tempo livre, mas em blocos pequenos demais
+para gerar descanso real.
+Tente proteger períodos maiores de recuperação.
+
+**O que Flora analisa pra gerar o Estado:**
+- Excesso de compromissos pesados
+- Ausência de pausas
+- Fragmentação da agenda
+- Excesso de troca de contexto
+- Tempo de deslocamento
+- Tarefas acumuladas
+- Equilíbrio entre áreas da vida
+- Presença de recuperação mental
+- Distribuição de energia ao longo da semana
+
+**Score numérico:** mantido mas discreto, secundário.
+Não é o protagonista.
+
+**Lacunas Inteligentes (nova funcionalidade — Prompt 5B):**
+Flora identifica microintervalos ao longo do dia
+(espera, pré-saída, pós-almoço, deslocamento) e sugere
+atividades preparadas com antecedência.
+
+NÃO gera culpa. Abordagem: consciência leve + sugestão prática.
+
+Exemplo:
+"Você teve ~1h em pequenos intervalos hoje.
+Parte pode virar: revisão rápida, leitura leve,
+pendência simples — ou só descanso mesmo."
+
+Flora inclusive sugere descansar quando necessário.
+O objetivo não é maximizar cada minuto — é melhorar
+o uso da energia mental.
+
+Flora ajuda a preparar uma lista de "atividades de intervalo"
+com antecedência — porque no momento do intervalo o usuário
+não sabe o que fazer.
+
+---
+
+## 7. GAMIFICAÇÃO
+
+**Princípio:** reforça progresso e consistência sem gerar culpa.
+Usuário com falha deve sentir vontade de voltar,
+não vergonha de abrir o app.
+
+**Pontos:**
++10  Compromisso concluído no horário
++7   Compromisso reagendado e feito
++5   Tarefa flexível concluída
++5   Check-in noturno completo (verificável)
++5   Nó de projeto concluído (timestamp verificável)
++3   Respondeu pergunta profunda da Flora (verificável)
++2   Streak diário de uso real (verificável)
++50  Semana 100%
++20  Semana 80%+
++3   Academia concluída — declarada
++3   Estudo concluído — declarado
+-5   Compromisso perdido sem reagendar
+
+**Níveis:**
+Semente (0) → Broto (101) → Raiz (251) → Caule (501) →
+Folha (901) → Galho (1401) → Copa (2001) → Floresta (3001) →
+Sequoia (5001) → Flora Lenda (8001+)
+
+**Streak:**
+- Contador zera se quebrar (consequência real existe)
+- Mensagem de quebra: leve, sem drama, incentiva recomeço
+- "Seu streak pausou ontem. Tudo bem — recomeça hoje.
+  O que você vai riscar da lista agora?"
+- SEM ranking com usuários fictícios (removido)
+- SEM mensagens punitivas agressivas
+
+**Badges:** normais + secretas (aparecem como "?")
+
+**Anti-trapaça:**
+- Fricção: "como foi?" ao confirmar tarefa física
+- Detecção: semanas perfeitas demais → Flora questiona
+- Pontos maiores em ações verificáveis pelo sistema
+
+---
+
+## 8. FUNCIONALIDADES ATUAIS
+
+- Chat com Flora em linguagem natural (estilo WhatsApp)
+- Onboarding com coleta de perfil
+- Calendário semanal interativo (WeekView.jsx)
+- Navegação entre semanas + botão "hoje"
+- Tarefas recorrentes com sistema de exceções pontuais
+- Categorias com cores:
+  🔴 Fixo | 🟡 Rotina | 🟣 Compromisso | 🔵 Lembrete | 🟢 Tarefa
+- Aba Rotina (estilo Google Agenda)
+- Aba Tarefas — painel do dia (TaskList.jsx)
+- Score de tempo livre (será substituído por Estado da Semana)
+- Card "Onde você está perdendo tempo"
+- Card "Próxima ação"
+- Quick Replies — botões clicáveis
+- Memória permanente (userMemory.js)
+- Streaming de resposta
+- Rascunho de input salvo
+- Gamificação: pontos, níveis, badges, streak, histórico
+- Tela de celebração ao subir de nível
+- Animação +pts ao concluir tarefa
+- Data/hora e agenda do dia injetadas em cada chamada à API
+
+---
+
+## 9. ROADMAP DE PROMPTS
+
+### ✅ Prompts 1–4 (concluídos)
+MVP base, Flora, onboarding, chat, calendário, gamificação.
+
+### 🔜 Prompt 5A — Ajustes estratégicos no que existe
+**Arquivos:** flora.js, onboarding/, gamificacao/, ScoreRing.jsx
+
+1. **Tom da Flora:** mais leve, direto, menos intenso
+2. **Onboarding simplificado:** 3 telas apenas
+   - Nome → Ocupação → Principal dificuldade → Boas-vindas
+   - Flora coleta o resto ao longo do uso natural
+3. **Estado da Semana:** substituir Score numérico por
+   interpretação em linguagem natural gerada pela Flora
+   - ScoreRing.jsx vira EstadoSemana.jsx
+   - Flora analisa estrutura + qualidade emocional da rotina
+   - Score numérico fica discreto, secundário
+4. **Gamificação ajustada:**
+   - Remover ranking com usuários fictícios
+   - Suavizar mensagens de streak quebrado
+   - Manter consequência real (zera) mas sem drama
+
+### 🔜 Prompt 5B — Novas funcionalidades
+**Arquivos:** App.jsx, flora.js, userMemory.js, projetos/ (criar)
+
+1. **Modo Caos:** botão "Estou perdido 🌀"
+   - Flora simplifica o dia automaticamente
+   - Lista reduzida: máximo 3 itens inegociáveis
+   - Interface simplifica visualmente
+   - Botão "Voltar ao normal"
+
+2. **Lacunas Inteligentes:**
+   - Flora identifica microintervalos ao longo do dia
+   - Sugere atividades preparadas com antecedência
+   - Flora ajuda a montar lista de "atividades de intervalo"
+   - Tom: consciência leve, nunca culpa
+   - Flora pode sugerir descanso quando necessário
+
+3. **Ritual de fechamento do dia:**
+   - Check-in noturno (20h–23h, máximo 2 minutos)
+   - Via Quick Replies: como foi / o que funcionou /
+     o que travou / algo muda amanhã
+   - Flora salva em userMemory.checkIns
+   - Nunca obrigatório — sempre tem "Pular tudo"
+
+4. **Rotinas temporárias:**
+   - Flora detecta impedimento (lesão, viagem, doença)
+   - Pausa atividades afetadas sem deletar rotina
+   - Lembrete de retorno 2 dias antes
+   - Restaura imediatamente se usuário avisar retorno
+
+5. **Aba Projetos com Mermaid.js:**
+   - Flora gera diagrama a partir de descrição do projeto
+   - Nós editáveis, flechas de dependência
+   - Marcar nó como concluído (timestamp verificável)
+   - Flora acompanha progresso e sugere encaixar na agenda
+
+6. **Gamificação anti-trapaça:**
+   - Fricção natural: "como foi?" ao confirmar tarefa física
+   - Detecção de padrão suspeito
+   - Pontos maiores em ações verificáveis
+
+### 🔜 Prompt 6 — PWA + Notificações + Geolocalização
+- PWA instalável no celular (sem App Store)
+- Notificações push (lembrete, streak, cobrança)
+- Geolocalização opcional, transparente, com consentimento
+- NÃO invasivo: ativado só com confiança já criada
+
+### 🔜 Prompt 7 — Deploy Real
+- Vercel (frontend) + Railway (backend) + Supabase (DB)
+- Autenticação: login Google ou email
+- Sair do localStorage
+- Domínio próprio
+
+### 🔜 Prompt 8 — Redesign Completo
+- Referências: Duolingo (leveza) + Calm (respiro)
+- Documento de identidade visual aprovado ANTES de implementar
+- Skill `frontend-design` ativada
+- Conceito: FLUIDEZ — orgânico, leve, respirável
+- Avatar visual pra Flora
+- Menos "dashboard", mais "clareza"
+- Só mandar pra testar APÓS redesign
+
+---
+
+## 10. ARQUITETURA DO PRODUTO — PRINCÍPIO IMPORTANTE
+
+Fluxo NÃO pode virar um "super app genérico" com mini apps
+separados (finanças, academia, estudos, saúde, etc).
+
+Deve continuar parecendo:
+"uma única mente organizando sua vida."
+
+Futuras funcionalidades entram APENAS se orbitarem:
+energia / tempo / clareza / rotina / equilíbrio mental
+
+Finanças entram porque impactam carga mental.
+Academia entra porque altera energia e rotina.
+Projetos entram porque geram pressão cognitiva.
+
+Tudo integrado emocionalmente. Nunca fragmentado.
+
+---
+
+## 11. ECOSSISTEMA TEMPO
+
+**Missão:** "Tempo é dinheiro pra empresas.
+Tempo é qualidade de vida pra pessoas."
+Fluxo App (SaaS B2C) ← FOCO ATUAL
+├── Reduz caos mental, organiza vida
+├── Futuramente recomenda → Tempo Store
+└── Módulo de estudos → concurseiros/universitários
+Tempo Store (dropshipping)
+├── Produtos físicos de produtividade
+└── Público aquecido pelo Fluxo e canal
+Canal Faceless (produtividade + finanças)
+├── 100% com IA (ElevenLabs + Claude + CapCut)
+└── Funil de aquisição gratuito pro Fluxo
+Consultoria de Automação (B2B)
+├── Especialistas identificam gargalos
+├── Tulio constrói solução com IA
+└── LaboReport é o caso 0
+LaboReport (Vertical SaaS)
+├── Laudos automáticos de química analítica
+├── Mercado desatendido no Brasil
+└── Ticket R$ 200–500/mês por laboratório
+
+---
+
+## 12. PRÓXIMAS ETAPAS IMEDIATAS
+
+Mandar Prompt 5A → testar → validar
+Mandar Prompt 5B → testar → validar
+Prompt 6 → PWA + notificações
+Prompt 7 → Deploy real (sair do localhost)
+Aprovar identidade visual antes do Prompt 8
+Prompt 8 → Redesign completo
+Testar com 5–10 pessoas de confiança
+Iterar com feedback real
+
+
+---
+
+*Construído por Tulio com Claude Code + Claude (estratégia)*
+*Contexto mantido entre sessões via este documento*

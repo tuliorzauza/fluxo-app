@@ -1,0 +1,109 @@
+# Feature Development Flow
+
+## 1. Definição da Feature
+
+Objetivo:
+- entender problema real
+- entender necessidade do usuário
+- evitar feature desnecessária
+
+Responsável:
+- Product Brain
+
+Perguntas:
+- qual problema isso resolve?
+- isso reduz fricção?
+- isso melhora clareza?
+- isso aumenta complexidade?
+- isso combina com a filosofia do Fluxo?
+
+---
+
+## 2. Revisão de UX
+
+Responsável:
+- Frontend Reviewer
+- UX/Psychology Agents
+
+Objetivos:
+- detectar overload
+- melhorar clareza
+- melhorar fluxo
+- reduzir atrito
+- melhorar experiência emocional
+
+---
+
+## 3. Revisão Técnica
+
+Responsável:
+- Technical Architect
+- Backend Reviewer
+
+Objetivos:
+- validar arquitetura
+- validar escalabilidade
+- evitar dívida técnica
+- validar estrutura
+
+---
+
+## 4. Implementação
+
+Responsável:
+- Executor Técnico
+
+Objetivos:
+- seguir padrões do projeto
+- manter consistência
+- documentar alterações
+
+---
+
+## 5. Revisão de Código
+
+Responsável:
+- Code Reviewer
+
+Objetivos:
+- validar qualidade
+- detectar riscos
+- melhorar manutenção futura
+
+---
+
+## 6. Testes
+
+Responsável:
+- Test Runner
+- Bug Hunter
+
+Objetivos:
+- detectar regressões
+- validar funcionamento
+- garantir estabilidade
+
+---
+
+## 7. Revisão Final
+
+Responsável:
+- Product Brain
+
+Objetivos:
+- validar alinhamento com o Fluxo
+- garantir simplicidade
+- evitar complexidade desnecessária
+
+---
+
+## Objetivo Final
+
+Toda feature deve:
+- melhorar experiência
+- manter simplicidade
+- reduzir fricção
+- preservar clareza
+- manter estabilidade do sistema
+
+---

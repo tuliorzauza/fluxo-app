@@ -1,0 +1,13 @@
+# Fluxo Knowledge Base
+#
+# Estrutura preparada para evolução futura.
+# A Flora poderá consultar arquivos JSON nesta pasta
+# com técnicas de gestão de tempo, psicologia comportamental,
+# hábitos e outros domínios de conhecimento.
+#
+# Formato esperado:
+# - gestao_tempo.json
+# - psicologia_comportamental.json
+# - habitos.json
+# - nutricao_basica.json
+# - exercicios.json

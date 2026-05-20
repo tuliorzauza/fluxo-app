@@ -1,0 +1,33 @@
+# Known Issues
+
+## Estrutura
+
+Este arquivo registra:
+- bugs recorrentes
+- limitações conhecidas
+- decisões técnicas importantes
+- riscos estruturais
+- problemas temporários
+- débitos técnicos
+
+---
+
+## Regras
+
+- Sempre documentar problemas recorrentes
+- Registrar causa provável quando conhecida
+- Registrar impacto
+- Registrar solução aplicada
+- Registrar riscos futuros
+
+---
+
+## Objetivo
+
+Criar memória técnica contínua para:
+- evitar repetição de erros
+- acelerar debug
+- melhorar estabilidade
+- aumentar contexto dos agentes
+
+---
