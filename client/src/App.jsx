@@ -430,6 +430,11 @@ export default function App() {
         day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[TOKEN DEBUG] session existe:', !!session);
+      console.log('[TOKEN DEBUG] access_token (20 chars):', session?.access_token?.slice(0, 20));
+      console.log('[TOKEN DEBUG] expires_at:', session?.expires_at);
+      console.log('[TOKEN DEBUG] agora:', Math.floor(Date.now() / 1000));
       const headers = await getAuthHeaders();
       console.log('[DEBUG] enviarMensagem — Authorization:', headers.Authorization?.slice(0, 30) + '...');
       const res = await fetchComAuth(`${API_URL}/api/processar/stream`, {

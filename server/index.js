@@ -227,6 +227,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ── Rota streaming SSE — conversa com a Flora ─────────────────────────────────
 // Auth inline (não como middleware separado) para garantir ordem correta com SSE
 app.post('/api/processar/stream', async (req, res) => {
+  console.log('[SERVER] Authorization header recebido:', req.headers.authorization?.slice(0, 30));
   // ── Validar token ANTES de qualquer header SSE ──────────────────────────────
   const authHeader = req.headers.authorization;
   console.log('[SSE] Authorization header presente:', !!authHeader,
@@ -243,6 +244,9 @@ app.post('/api/processar/stream', async (req, res) => {
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     console.log('[SSE] getUser resultado:', error ? `ERRO: ${error.message}` : `OK — userId: ${user?.id}`);
+    console.log('[SERVER] supabase.auth.getUser resultado:');
+    console.log('[SERVER] user:', user?.id);
+    console.log('[SERVER] error:', error?.message, error?.status);
     if (error || !user) {
       return res.status(401).json({ erro: 'Token inválido ou expirado', codigo: 'INVALID_TOKEN' });
     }
@@ -312,7 +316,7 @@ app.post('/api/processar/stream', async (req, res) => {
     res.end();
 
     // Persiste no Supabase em background — não bloqueia a resposta
-    const userId = req.userId;
+    // NOTA: userId vem do inline auth acima (let userId = user.id), NÃO de req.userId (que é undefined aqui)
     Promise.all([
       plano            ? salvarPlano(userId, plano)                                           : Promise.resolve(),
       memoriaAtualizada ? salvarMemoria(userId, memoriaAtualizada)                            : Promise.resolve(),

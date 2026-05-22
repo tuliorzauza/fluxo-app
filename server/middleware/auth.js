@@ -16,6 +16,9 @@ async function autenticarUsuario(req, res, next) {
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     console.log('[AUTH] getUser resultado:', error ? `ERRO: ${error.message}` : `OK — userId: ${user?.id}`);
+    console.log('[SERVER] supabase.auth.getUser resultado:');
+    console.log('[SERVER] user:', user?.id);
+    console.log('[SERVER] error:', error?.message, error?.status);
 
     if (error) {
       console.error('Erro de autenticação Supabase:', error.message);
