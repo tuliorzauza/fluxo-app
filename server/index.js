@@ -185,7 +185,30 @@ function posProcessar({ rawText, planoAtual, messages, memoria }) {
   return { mensagem, modo, plano, quickReplies, perguntaFeita, memoriaAtualizada, historicoAtualizado };
 }
 
-app.use(cors());
+const corsOptions = {
+  origin: function (origin, callback) {
+    const origensPermitidas = [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      /\.vercel\.app$/,
+    ];
+    if (!origin) return callback(null, true);
+    const permitido = origensPermitidas.some(permitida => {
+      if (typeof permitida === 'string') return permitida === origin;
+      if (permitida instanceof RegExp) return permitida.test(origin);
+      return false;
+    });
+    if (permitido) {
+      callback(null, true);
+    } else {
+      console.log('CORS bloqueado para origem:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

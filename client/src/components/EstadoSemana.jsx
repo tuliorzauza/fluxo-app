@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lightbulb } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 // Emojis que representam estados negativos da semana
 const EMOJIS_NEGATIVOS = new Set(['⚠️', '🔥', '😮‍💨', '🌀']);
 
@@ -97,7 +99,7 @@ export default function EstadoSemana({ plano, onVerPlano }) {
     setLoading(true);
     const rotina = lerRotina();
 
-    fetch('/api/estado-semana', {
+    fetch(`${API_URL}/api/estado-semana`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ planoAtual: plano, scoreDiscreto, rotina }),

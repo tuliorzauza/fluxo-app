@@ -31,3 +31,63 @@ Criar memória técnica contínua para:
 - aumentar contexto dos agentes
 
 ---
+
+## Issues Registradas
+
+---
+
+### [2026-05-21] BUG-001 — Botão de notificações não disparava prompt de permissão
+
+**Sintoma:** Ícone 🔔 visível no header mas clique não abria prompt de permissão.
+
+**Causa raiz:** `ativarNotificacoes` chamava `pedirPermissaoNotificacao()` (função auxiliar async), que por sua vez chamava `Notification.requestPermission()`. Browsers como iOS Safari exigem que `requestPermission()` seja chamado diretamente do handler de clique do usuário — a cadeia `onClick → useCallback → função auxiliar → requestPermission()` quebra esse requisito. Nenhum erro visível no console.
+
+**Impacto:** Usuário não conseguia ativar notificações manualmente. Botão 🔕 era `disabled`, sem instrução.
+
+**Solução aplicada:** Chamar `Notification.requestPermission()` diretamente dentro do `useCallback`, sem passar por função auxiliar. Botão 🔕 (denied) agora mostra instrução iOS/Android ao clicar.
+
+**Risco futuro:** Em PWAs iOS instalados, o Safari pode não suportar a Notification API — tratar `'unsupported'` sempre.
+
+---
+
+### [2026-05-21] BUG-002 — Compromissos fixos do onboarding não apareciam na aba Rotina
+
+**Sintoma:** Usuário informava "trabalho das 6h às 15h de segunda a sexta" no onboarding, mas a aba Rotina ficava vazia.
+
+**Causa raiz:** `concluirOnboarding` salvava os compromissos fixos apenas na `memoria.rotina.comprometida` como array de strings (texto legível para a Flora), mas não criava objetos estruturados no `plano`. `RoutineView` e `WeekView` leem `plano?.compromissos || []` — com `plano = null`, a rotina fica vazia.
+
+**Impacto:** Funcionalidade core quebrada — o principal valor do onboarding (pré-popular a rotina) não funcionava.
+
+**Solução aplicada:** Ao concluir o onboarding com compromissos fixos preenchidos, salvar uma flag `fluxo_compromissos_fixos_pendentes` no localStorage. Um `useEffect` detecta a flag após o app renderizar e envia automaticamente uma mensagem `[Sistema]` para a Flora criar os compromissos recorrentes no plano usando linguagem natural (mais confiável que regex).
+
+**Risco futuro:** Se o servidor estiver offline no momento do onboarding, a mensagem falha silenciosamente. Considerar retry ou fallback local no futuro.
+
+---
+
+### [2026-05-21] DECISÃO — Preparação para deploy Railway + Vercel
+
+**O que foi feito:**
+- `client/.env.production`: `VITE_API_URL=https://fluxo-app-production.up.railway.app`
+- `client/.env.development`: `VITE_API_URL=` (vazio → usa proxy do Vite para localhost:3001)
+- `API_URL = import.meta.env.VITE_API_URL || ''` adicionado no topo de `App.jsx` e `EstadoSemana.jsx`
+- Todos os fetches hardcoded `/api/...` → `` `${API_URL}/api/...` `` (3 no total: processar/stream, plano-acao, estado-semana)
+- CORS do servidor atualizado: `cors()` sem restrições → lista explícita (`localhost:5173`, `localhost:3000`, `*.vercel.app`)
+- `.gitignore` atualizado: adicionados `client/.env`, `client/.env.local`, `client/.env.production`
+- `server/Procfile` criado: `web: node index.js`
+
+**Riscos futuros:**
+- Quando a URL exata do Vercel for confirmada, adicionar ela explicitamente em `origensPermitidas` no CORS
+- Variáveis do Vercel precisam ser configuradas no painel (não via arquivo — `.env.production` está no .gitignore)
+- `client/.env.development` é seguro commitar (valor vazio), mas `.env.production` NÃO vai pro GitHub
+
+---
+
+### [2026-05-21] DECISÃO — Geolocalização removida temporariamente
+
+**Motivo:** Feature adicionada prematuramente sem validação de UX. Adicionava complexidade (3 estados, 2 effects, 1 useCallback), poluía o header e dependia de permissões problemáticas em iOS.
+
+**O que foi removido:** Estados `geoAtivo`, `localAtual`, `geoPermissao`; callbacks `processarLocalizacao`, `toggleGeolocalizacao`; 2 useEffects; botão 📍 do header; função `mostrarInstrucaoLocalizacao`.
+
+**Para reativar:** Implementar como feature dedicada com UX pensada (não apenas um botão no header).
+
+---

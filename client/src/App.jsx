@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageSquare, CalendarDays, Clock, UserCircle, Trash2, Waves, Zap } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 import Onboarding      from './components/onboarding/Onboarding';
 import ChatArea        from './components/chat/ChatArea';
 import ChatInput       from './components/chat/ChatInput';
@@ -78,19 +80,6 @@ function extrairAtividadesDoTexto(texto) {
     .filter(s => s.length > 3);
 }
 
-// ── Instrução de localização para iOS ─────────────────────────────────────────
-function mostrarInstrucaoLocalizacao() {
-  const isIOS = /iP(ad|hone|od)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isPWA = window.matchMedia('(display-mode: standalone)').matches;
-  if (isIOS && isPWA) {
-    alert('Para ativar a localização:\n\n1. Feche o Fluxo\n2. Abra Ajustes > Fluxo\n3. Toque em "Localização"\n4. Selecione "Ao usar o app"');
-  } else if (isIOS) {
-    alert('Para ativar a localização:\n\n1. Abra Ajustes > Safari\n2. Toque em "Localização"\n3. Selecione "Perguntar" e atualize a página');
-  } else {
-    alert('Localização bloqueada. Toque no ícone de cadeado na barra de endereço e ative a permissão de localização.');
-  }
-}
 
 // ── Notificações ─────────────────────────────────────────────────────────────
 async function pedirPermissaoNotificacao() {
@@ -196,10 +185,6 @@ export default function App() {
     return Notification.permission;
   });
 
-  // Geolocalização — opt-in explícito do usuário
-  const [geoAtivo,     setGeoAtivo]     = useState(() => localStorage.getItem('fluxo_geo_ativo') === 'true');
-  const [localAtual,   setLocalAtual]   = useState(null);
-  const [geoPermissao, setGeoPermissao] = useState('prompt');
 
   // ── Gamificação UI ──────────────────────────────────────────────────────────
   const [animacoes,      setAnimacoes]      = useState([]);
@@ -227,16 +212,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [onboardingFeito]);
 
-  // ── Query permissão de localização na montagem ───────────────────────────
-  useEffect(() => {
-    if (!navigator.permissions) return;
-    navigator.permissions.query({ name: 'geolocation' }).then(status => {
-      setGeoPermissao(status.state);
-      status.onchange = () => setGeoPermissao(status.state);
-    }).catch(() => {});
-  }, []);
-
-  // ── Verificação periódica de notificações (a cada 5 min) ─────────────────
+// ── Verificação periódica de notificações (a cada 5 min) ─────────────────
   useEffect(() => {
     if (Notification.permission !== 'granted') return;
     if (!plano && !memoria) return;
@@ -266,10 +242,21 @@ export default function App() {
 
   // ── Ativar notificações via botão manual ─────────────────────────────────
   const ativarNotificacoes = useCallback(async () => {
-    const concedida = await pedirPermissaoNotificacao();
-    setNotificacaoPermissao('Notification' in window ? Notification.permission : 'unsupported');
-    if (concedida) {
-      enviarNotificacao('Notificações ativadas! 🔔', 'A Flora vai te lembrar dos seus compromissos.', { tag: 'notif-ativadas' });
+    if (!('Notification' in window)) {
+      alert('Seu navegador não suporta notificações.');
+      return;
+    }
+    const resultado = await Notification.requestPermission();
+    setNotificacaoPermissao(resultado);
+    if (resultado === 'granted') {
+      new Notification('Fluxo ativado! 🌿', {
+        body: 'Você vai receber lembretes da Flora aqui.',
+        icon: '/icon-192.png',
+      });
+    } else if (resultado === 'denied') {
+      alert(
+        'Notificações bloqueadas.\n\nNo iPhone:\n1. Ajustes → Safari → Notificações\n2. Ative para este site\n\nNo Android:\n1. Configurações → Apps → Navegador → Notificações\n2. Ative e recarregue o app'
+      );
     }
   }, []);
 
@@ -301,6 +288,11 @@ export default function App() {
     };
     setMemoria(memoriaFinal);
     ls_set(SK.memoria, memoriaFinal);
+
+    // Se o usuário informou compromissos fixos, salva flag para Flora criar no plano
+    if (cfixos?.temFixos && cfixos.descricao?.trim()) {
+      ls_set('fluxo_compromissos_fixos_pendentes', cfixos.descricao.trim());
+    }
 
     const msgBV = {
       tipo: 'flora',
@@ -343,7 +335,7 @@ export default function App() {
         day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
-      const res = await fetch('/api/processar/stream', {
+      const res = await fetch(`${API_URL}/api/processar/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -515,94 +507,21 @@ export default function App() {
     return () => clearTimeout(t);
   }, [onboardingFeito, memoria]);
 
-  // ── Geolocalização ────────────────────────────────────────────────────────
-  const processarLocalizacao = useCallback((coords) => {
-    function distancia(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-    const RAIO = 500;
-    const locais = [
-      { nome: 'trabalho', coords: memoria?.trabalho?.coordenadas },
-      { nome: 'casa',     coords: memoria?.moradia?.coordenadas  },
-      { nome: 'academia', coords: memoria?.academia?.coordenadas },
-    ].filter(l => l.coords);
-
-    let localDetectado = null;
-    for (const local of locais) {
-      if (distancia(coords.latitude, coords.longitude, local.coords.lat, local.coords.lng) <= RAIO) {
-        localDetectado = local.nome;
-        break;
-      }
-    }
-    setLocalAtual(localDetectado);
-
-    const hoje = new Date().toISOString().split('T')[0];
-    if (localDetectado === 'casa') {
-      const pendentes = plano?.tarefas?.filter(t => !t.concluida).length || 0;
-      if (pendentes > 0) {
-        enviarNotificacao('Chegou em casa! 🏠', `Você tem ${pendentes} tarefa${pendentes > 1 ? 's' : ''} pra hoje.`, { tag: `chegou-casa-${hoje}` });
-      }
-    }
-    if (localDetectado === 'academia') {
-      const hora = new Date().getHours() * 60 + new Date().getMinutes();
-      const ac = plano?.compromissos?.find(c => c.titulo?.toLowerCase().includes('academ') && !c.concluida);
-      if (ac?.hora) {
-        const [h, m] = ac.hora.split(':').map(Number);
-        if (Math.abs(h * 60 + m - hora) <= 60) {
-          enviarNotificacao('Você tá do lado da academia 💪', 'Vai treinar hoje?', { tag: `academia-${hoje}` });
-        }
-      }
-    }
-  }, [memoria, plano]);
-
-  const toggleGeolocalizacao = useCallback(() => {
-    if (geoAtivo) {
-      setGeoAtivo(false);
-      setLocalAtual(null);
-      localStorage.setItem('fluxo_geo_ativo', 'false');
-      return;
-    }
-    if (geoPermissao === 'denied') {
-      mostrarInstrucaoLocalizacao();
-      return;
-    }
-    if (!navigator.geolocation) { alert('Seu navegador não suporta geolocalização.'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeoAtivo(true);
-        setGeoPermissao('granted');
-        localStorage.setItem('fluxo_geo_ativo', 'true');
-        processarLocalizacao(pos.coords);
-      },
-      (err) => {
-        if (err.code === 1) {
-          setGeoPermissao('denied');
-          mostrarInstrucaoLocalizacao();
-        } else {
-          alert('Não foi possível obter a localização. Tente novamente.');
-        }
-      },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-    );
-  }, [geoAtivo, geoPermissao, processarLocalizacao]);
-
-  // Verificação periódica de posição (a cada 10 min, somente se geo ativo)
+// ── Compromissos fixos do onboarding → criar no plano via Flora ──────────
+  const compromissosPendentesRef = useRef(false);
   useEffect(() => {
-    if (!geoAtivo) return;
-    const intervaloGeo = setInterval(() => {
-      navigator.geolocation?.getCurrentPosition(
-        pos => processarLocalizacao(pos.coords),
-        () => {},
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    if (!onboardingFeito || compromissosPendentesRef.current) return;
+    const descricao = ls_get('fluxo_compromissos_fixos_pendentes');
+    if (!descricao) return;
+    compromissosPendentesRef.current = true;
+    localStorage.removeItem('fluxo_compromissos_fixos_pendentes');
+    const t = setTimeout(() => {
+      enviarMensagemRef.current(
+        `[Sistema] O usuário acabou de completar o onboarding e informou os seguintes compromissos fixos:\n"${descricao}"\n\nCrie esses compromissos recorrentes no plano agora, com categoria 'fixo', horários e dias corretos. Não faça perguntas — interprete e crie diretamente.`
       );
-    }, 10 * 60 * 1000);
-    return () => clearInterval(intervaloGeo);
-  }, [geoAtivo, processarLocalizacao]);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [onboardingFeito]);
 
   // ── Modo Caos ────────────────────────────────────────────────────────────
   const ativarModoCaos = useCallback(() => {
@@ -618,7 +537,7 @@ export default function App() {
     setCarregando(true);
     setErro(null);
     try {
-      const res = await fetch('/api/plano-acao', {
+      const res = await fetch(`${API_URL}/api/plano-acao`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -927,42 +846,15 @@ export default function App() {
           )}
           {notificacaoPermissao === 'denied' && (
             <button
-              disabled
-              title="Notificações bloqueadas. Ative nas configurações do navegador."
-              className="flex items-center gap-1 px-2 py-1.5 rounded-xl opacity-40 cursor-not-allowed"
+              onClick={() => alert('Notificações bloqueadas.\n\nNo iPhone:\n1. Ajustes → Safari → Notificações\n2. Ative para este site\n\nNo Android:\n1. Configurações → Apps → Navegador → Notificações\n2. Ative e recarregue o app')}
+              title="Notificações bloqueadas — toque para instruções"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-xl opacity-50"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
             >
               <span className="text-[11px]">🔕</span>
             </button>
           )}
-          <button
-            onClick={toggleGeolocalizacao}
-            title={
-              geoAtivo ? 'Desativar localização' :
-              geoPermissao === 'denied' ? 'Localização bloqueada — toque para instruções' :
-              'Ativar localização'
-            }
-            className="flex items-center gap-1 px-2 py-1.5 rounded-xl transition-all"
-            style={{
-              background: geoAtivo ? 'rgba(245,158,11,0.12)' :
-                geoPermissao === 'denied' ? 'rgba(239,68,68,0.06)' :
-                'rgba(255,255,255,0.04)',
-              border: geoAtivo ? '1px solid rgba(245,158,11,0.3)' :
-                geoPermissao === 'denied' ? '1px solid rgba(239,68,68,0.15)' :
-                '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
-            <span className="text-[11px]">📍</span>
-            <span className="text-[10px] font-semibold" style={{
-              color: geoAtivo ? '#f59e0b' :
-                geoPermissao === 'denied' ? '#6b7280' :
-                '#52525b'
-            }}>
-              {geoAtivo ? (localAtual ? localAtual : 'Ativo') :
-               geoPermissao === 'denied' ? 'bloqueado' : 'Local'}
-            </span>
-          </button>
-          <button onClick={limpar} title="Limpar histórico"
+<button onClick={limpar} title="Limpar histórico"
             className="p-1.5 rounded-lg text-zinc-700 hover:text-zinc-400 transition-colors hover:bg-white/[0.04]">
             <Trash2 size={14} />
           </button>
