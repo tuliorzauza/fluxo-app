@@ -145,3 +145,26 @@ Criar memória técnica contínua para:
 **Risco futuro:** O retry é feito apenas uma vez. Se o refresh falhar (sessão completamente inválida), o usuário precisará refazer o login manualmente — comportamento correto e esperado.
 
 ---
+
+### [2026-05-21] BUG-004 — Loop infinito de autenticação após login com Google
+
+**Sintoma:** Usuário faz login com Google, começa o onboarding, e é redirecionado de volta à tela de login.
+
+**Causa raiz:** Três problemas sobrepostos:
+1. `carregarDadosUsuario` disparado duas vezes em paralelo: `getSession().then()` e `onAuthStateChange` ambos a chamavam sem deduplição. No fluxo OAuth, Supabase dispara `INITIAL_SESSION` → `SIGNED_IN` em sequência. A primeira chamada, se recebia 401 (token ainda processando), chamava `refreshSession()` → disparava `TOKEN_REFRESHED` → terceira chamada → loop.
+2. `onAuthStateChange` ignorava o tipo de evento (`_event`). Quando o evento era `SIGNED_OUT` ou `INITIAL_SESSION` com `session = null` (antes do OAuth terminar), `setSessao(null)` era chamado, mandando o usuário de volta ao login no meio do fluxo OAuth.
+3. `redirectTo={window.location.origin}` no Login.jsx retornava URL sem barra final, que pode ser rejeitada pelo Supabase dependendo da configuração de Redirect URLs.
+
+**Solução aplicada:**
+- `getSession().then()` agora apenas libera `carregandoAuth` — não chama mais `carregarDadosUsuario`
+- `onAuthStateChange` filtra por evento: só chama `carregarDadosUsuario` em `SIGNED_IN` e `INITIAL_SESSION` (com sessão presente). Trata `SIGNED_OUT` explicitamente zerando todo o estado.
+- `carregarDadosUsuario` protegido com `carregandoDadosRef` — chamadas simultâneas são descartadas (guard in-flight). Erros 401 são logados mas nunca causam logout.
+- `redirectTo` corrigido para incluir barra final (`${window.location.origin}/`) com fallback SSR-safe.
+
+**Configuração obrigatória no Supabase (painel → Authentication → URL Configuration):**
+- Site URL: `https://fluxo-app-zeta.vercel.app`
+- Redirect URLs: `https://fluxo-app-zeta.vercel.app/`, `https://fluxo-app-zeta.vercel.app/**`, `http://localhost:5173`, `http://localhost:5173/**`
+
+**Risco futuro:** Os `console.log` de debug foram mantidos intencionalmente para facilitar diagnóstico em produção. Remover quando o fluxo estiver estável.
+
+---

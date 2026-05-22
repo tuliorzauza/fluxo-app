@@ -51,7 +51,11 @@ export default function Login() {
           }}
           providers={['google']}
           onlyThirdPartyProviders={true}
-          redirectTo={window.location.origin}
+          redirectTo={
+            typeof window !== 'undefined'
+              ? `${window.location.origin}/`
+              : 'https://fluxo-app-zeta.vercel.app/'
+          }
           localization={{
             variables: {
               sign_in: {

@@ -250,18 +250,35 @@ export default function App() {
   // ── Supabase Auth — sessão e listener ──────────────────────────────────────
   const carregarDadosUsuarioRef = useRef(null);
   useEffect(() => {
+    // getSession apenas libera o loading inicial — não carrega dados aqui
+    // para evitar duplo disparo com onAuthStateChange
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[AUTH] getSession:', session ? 'tem sessão' : 'sem sessão');
       setSessao(session);
       setCarregandoAuth(false);
-      if (session && carregarDadosUsuarioRef.current) {
-        carregarDadosUsuarioRef.current(session.user.id);
-      }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[AUTH] evento:', event, '| sessão:', session ? 'presente' : 'ausente');
+
+      if (event === 'SIGNED_OUT') {
+        setSessao(null);
+        setPlano(null);
+        setMensagens([]);
+        setHistApi([]);
+        setMemoria(null);
+        setPerfil(null);
+        setOnboardingFeito(false);
+        setConcluidasExternas({});
+        return;
+      }
+
       setSessao(session);
-      if (session && carregarDadosUsuarioRef.current) {
-        carregarDadosUsuarioRef.current(session.user.id);
+      setCarregandoAuth(false);
+
+      // Carrega dados apenas nos eventos que indicam login novo ou sessão inicial
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+        carregarDadosUsuarioRef.current?.();
       }
     });
 
@@ -868,10 +885,22 @@ export default function App() {
   };
 
   // ── Carregar dados do usuário do Supabase ────────────────────────────────
+  const carregandoDadosRef = useRef(false);
   const carregarDadosUsuario = useCallback(async () => {
+    if (carregandoDadosRef.current) return;
+    carregandoDadosRef.current = true;
     try {
       const res = await fetchComAuth(`${API_URL}/api/usuario/dados`);
-      if (!res.ok) return;
+
+      if (res.status === 401) {
+        console.error('[AUTH] 401 em carregarDadosUsuario — ignorando, sem logout');
+        return;
+      }
+      if (!res.ok) {
+        console.error('[AUTH] Erro ao carregar dados:', res.status);
+        return;
+      }
+
       const dados = await res.json();
 
       // Se não há dados no Supabase mas há no localStorage → migrar
@@ -908,7 +937,9 @@ export default function App() {
         ls_set(SK.concluidas, dados.tarefasConcluidas);
       }
     } catch (err) {
-      console.error('Erro ao carregar dados do Supabase:', err);
+      console.error('[AUTH] Erro em carregarDadosUsuario:', err);
+    } finally {
+      carregandoDadosRef.current = false;
     }
   }, []);
 
