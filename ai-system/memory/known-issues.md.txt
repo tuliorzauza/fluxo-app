@@ -91,3 +91,39 @@ Criar memória técnica contínua para:
 **Para reativar:** Implementar como feature dedicada com UX pensada (não apenas um botão no header).
 
 ---
+
+### [2026-05-21] DECISÃO — Migração localStorage → Supabase (autenticação Google)
+
+**O que foi implementado:**
+
+**Backend (server/):**
+- `server/services/supabase.js` — cliente Supabase com service role key (nunca expor no frontend)
+- `server/middleware/auth.js` — middleware `autenticarUsuario` que valida JWT via `supabase.auth.getUser(token)`
+- `server/services/dadosUsuario.js` — CRUD completo: `carregarDadosUsuario`, `salvarPlano`, `salvarMemoria`, `salvarHistorico`, `salvarPerfil`, `salvarTarefasConcluidas`
+- Todos os endpoints protegidos com `autenticarUsuario` (incluindo SSE streaming)
+- Novos endpoints: `GET /api/usuario/dados`, `POST /api/usuario/tarefas-concluidas`, `POST /api/usuario/salvar-plano`, `POST /api/usuario/salvar-memoria`, `POST /api/usuario/salvar-perfil`
+- Save no Supabase em background após cada resposta (não bloqueia SSE)
+- CORS: adicionado `https://fluxo-app-zeta.vercel.app` explicitamente além do regex `*.vercel.app`
+
+**Frontend (client/):**
+- `client/src/lib/supabase.js` — cliente Supabase público (anon key)
+- `client/src/components/auth/Login.jsx` — tela de login com Google via `@supabase/auth-ui-react`
+- `App.jsx` — sessão Supabase (`sessao`, `carregandoAuth`), auth guard (loading → login → onboarding → app), botão logout, `carregarDadosUsuario`, `getAuthHeaders`, `sincronizarTarefasConcluidas`, migração do localStorage
+
+**Decisões arquiteturais:**
+- Estado continua sendo enviado no body de cada request (mantém compatibilidade, evita refatorar `enviarMensagem`)
+- localStorage mantido como cache local — Supabase é fonte de verdade multi-dispositivo
+- Migração aditiva (upsert): se falhar, pode ser re-executada com segurança
+- `carregarDadosUsuario` usa refs para evitar dependência circular com `migrarLocalStorageParaSupabase`
+
+**Riscos futuros:**
+- PWA offline com JWT expirado: usuário verá login screen ao reconectar. Não usar `signOut()` automático — deixar o Supabase renegociar o token.
+- historico_display não é salvo no carregamento inicial (só via streaming). Verificar se há regressão no histórico cross-device.
+- `@supabase/auth-ui-react` pode ter breaking changes — fixar versão se necessário.
+
+**Variáveis de ambiente necessárias (NUNCA commitar):**
+- `server/.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
+- Railway: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
+- Vercel: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+
+---

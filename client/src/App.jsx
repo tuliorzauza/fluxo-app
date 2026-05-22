@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, CalendarDays, Clock, UserCircle, Trash2, Waves, Zap } from 'lucide-react';
+import { MessageSquare, CalendarDays, Clock, UserCircle, Trash2, Waves, Zap, LogOut } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+
+import { supabase } from './lib/supabase';
+import Login from './components/auth/Login';
 
 import Onboarding      from './components/onboarding/Onboarding';
 import ChatArea        from './components/chat/ChatArea';
@@ -148,8 +151,22 @@ function verificarNotificacoes(planoAtual, memoriaAtual) {
   }
 }
 
+// ── Helper: headers autenticados ─────────────────────────────────────────────
+async function getAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
+  // ── Autenticação ────────────────────────────────────────────────────────────
+  const [sessao,         setSessao]         = useState(null);
+  const [carregandoAuth, setCarregandoAuth] = useState(true);
+
   // BUG 1 — inicialização lazy: lê o localStorage diretamente no primeiro render,
   // evitando o ciclo null → useEffect → setState que perde estado no hot reload.
   const [onboardingFeito, setOnboardingFeito] = useState(() => !!ls_get(SK.onboarding));
@@ -189,6 +206,27 @@ export default function App() {
   // ── Gamificação UI ──────────────────────────────────────────────────────────
   const [animacoes,      setAnimacoes]      = useState([]);
   const [celebracaoNivel, setCelebracaoNivel] = useState(null);
+
+  // ── Supabase Auth — sessão e listener ──────────────────────────────────────
+  const carregarDadosUsuarioRef = useRef(null);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSessao(session);
+      setCarregandoAuth(false);
+      if (session && carregarDadosUsuarioRef.current) {
+        carregarDadosUsuarioRef.current(session.user.id);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSessao(session);
+      if (session && carregarDadosUsuarioRef.current) {
+        carregarDadosUsuarioRef.current(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Boas-vindas: exibe primeira mensagem da Flora se o histórico ainda está vazio
   useEffect(() => {
@@ -335,9 +373,10 @@ export default function App() {
         day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/processar/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           input,
           historicoMensagens: histApi,
@@ -537,9 +576,10 @@ export default function App() {
     setCarregando(true);
     setErro(null);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/plano-acao`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           diagnostico,
           planoAtual: plano,
@@ -649,6 +689,7 @@ export default function App() {
         delete novo[id];
       }
       ls_set(SK.concluidas, novo);
+      sincronizarTarefasConcluidas(novo);
       return novo;
     });
 
@@ -774,6 +815,139 @@ export default function App() {
     window.location.reload();
   };
 
+  // ── Logout ───────────────────────────────────────────────────────────────
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    Object.values(SK).forEach(k => localStorage.removeItem(k));
+    localStorage.removeItem('fluxo_tarefas_concluidas');
+    localStorage.removeItem('fluxo_estado_semana');
+    setSessao(null);
+    setPlano(null);
+    setMensagens([]);
+    setHistApi([]);
+    setMemoria(null);
+    setPerfil(null);
+    setOnboardingFeito(false);
+    setConcluidasExternas({});
+  };
+
+  // ── Carregar dados do usuário do Supabase ────────────────────────────────
+  const carregarDadosUsuario = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/usuario/dados`, { headers });
+      if (!res.ok) return;
+      const dados = await res.json();
+
+      // Se não há dados no Supabase mas há no localStorage → migrar
+      const semDadosNoSupabase = !dados.perfil && !dados.plano && !dados.memoria;
+      if (semDadosNoSupabase) {
+        await migrarLocalStorageParaSupabaseRef.current?.();
+        return; // após migrar, o próximo carregamento buscará do Supabase
+      }
+
+      if (dados.perfil) {
+        setPerfil(dados.perfil);
+        ls_set(SK.perfil, dados.perfil);
+        setOnboardingFeito(true);
+        ls_set(SK.onboarding, true);
+      }
+      if (dados.plano) {
+        setPlano(dados.plano);
+        ls_set(SK.plano, dados.plano);
+      }
+      if (dados.memoria) {
+        setMemoria(dados.memoria);
+        ls_set(SK.memoria, dados.memoria);
+      }
+      if (dados.historicoDisplay?.length) {
+        setMensagens(dados.historicoDisplay);
+        ls_set(SK.histDisplay, dados.historicoDisplay);
+      }
+      if (dados.historicoApi?.length) {
+        setHistApi(dados.historicoApi);
+        ls_set(SK.histApi, dados.historicoApi);
+      }
+      if (dados.tarefasConcluidas && Object.keys(dados.tarefasConcluidas).length) {
+        setConcluidasExternas(dados.tarefasConcluidas);
+        ls_set(SK.concluidas, dados.tarefasConcluidas);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar dados do Supabase:', err);
+    }
+  }, []);
+
+  // Registra no ref para uso dentro do useEffect de auth (evita dependência circular)
+  useEffect(() => {
+    carregarDadosUsuarioRef.current = carregarDadosUsuario;
+  }, [carregarDadosUsuario]);
+
+  // ── Migração do localStorage para o Supabase (primeiro login) ────────────
+  const migracaoFeitaRef = useRef(false);
+  const migrarLocalStorageParaSupabaseRef = useRef(null);
+  const migrarLocalStorageParaSupabase = useCallback(async () => {
+    if (migracaoFeitaRef.current) return;
+    const planoLocal   = ls_get(SK.plano);
+    const memoriaLocal = ls_get(SK.memoria);
+    const perfilLocal  = ls_get(SK.perfil);
+
+    if (!planoLocal && !memoriaLocal && !perfilLocal) return;
+
+    migracaoFeitaRef.current = true;
+    try {
+      const headers = await getAuthHeaders();
+      await Promise.all([
+        planoLocal ? fetch(`${API_URL}/api/usuario/salvar-plano`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ plano: planoLocal }),
+        }) : Promise.resolve(),
+        memoriaLocal ? fetch(`${API_URL}/api/usuario/salvar-memoria`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ memoria: memoriaLocal }),
+        }) : Promise.resolve(),
+        perfilLocal ? fetch(`${API_URL}/api/usuario/salvar-perfil`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ perfil: perfilLocal }),
+        }) : Promise.resolve(),
+      ]);
+      console.log('Migração localStorage → Supabase concluída');
+    } catch (err) {
+      console.error('Erro na migração:', err);
+      migracaoFeitaRef.current = false; // permite retry
+    }
+  }, []);
+
+  useEffect(() => {
+    migrarLocalStorageParaSupabaseRef.current = migrarLocalStorageParaSupabase;
+  }, [migrarLocalStorageParaSupabase]);
+
+  // ── Sincronizar tarefas concluídas com Supabase ─────────────────────────
+  async function sincronizarTarefasConcluidas(tarefaIds) {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`${API_URL}/api/usuario/tarefas-concluidas`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ tarefaIds }),
+      });
+    } catch (err) {
+      console.error('Erro ao sincronizar tarefas concluídas:', err);
+    }
+  }
+
+  // ── Auth guards ─────────────────────────────────────────────────────────────
+  if (carregandoAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#0f0f13]">
+        <div className="text-amber-500 text-sm font-titulo">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (!sessao) {
+    return <Login />;
+  }
+
   // ── Onboarding ───────────────────────────────────────────────────────────
   if (!onboardingFeito) return <Onboarding onConcluir={concluirOnboarding} />;
 
@@ -861,6 +1035,10 @@ export default function App() {
           <button onClick={resetarPerfil} title="Redefinir perfil"
             className="p-1.5 rounded-lg text-zinc-700 hover:text-zinc-400 transition-colors hover:bg-white/[0.04]">
             <UserCircle size={16} />
+          </button>
+          <button onClick={handleLogout} title="Sair da conta"
+            className="p-1.5 rounded-lg text-zinc-700 hover:text-zinc-400 transition-colors hover:bg-white/[0.04]">
+            <LogOut size={14} />
           </button>
         </div>
       </header>

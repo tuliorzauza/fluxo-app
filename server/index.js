@@ -7,6 +7,15 @@ const { buildFloraPrompt, parseFloraResponse } = require('./services/flora');
 const { preservarEstadosTarefas, limitarHistorico, extrairTemasRelevantes } = require('./services/userContext');
 const { selecionarProximaPergunta } = require('./data/floraQuestions');
 const { MEMORIA_INICIAL, mesclarMemoria, atualizarGamificacao } = require('./services/userMemory');
+const { autenticarUsuario } = require('./middleware/auth');
+const {
+  carregarDadosUsuario,
+  salvarPlano,
+  salvarMemoria,
+  salvarHistorico,
+  salvarPerfil,
+  salvarTarefasConcluidas,
+} = require('./services/dadosUsuario');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -190,6 +199,7 @@ const corsOptions = {
     const origensPermitidas = [
       'http://localhost:5173',
       'http://localhost:3000',
+      'https://fluxo-app-zeta.vercel.app',
       /\.vercel\.app$/,
     ];
     if (!origin) return callback(null, true);
@@ -214,7 +224,7 @@ app.use(express.json({ limit: '10mb' }));
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Rota streaming SSE — conversa com a Flora ─────────────────────────────────
-app.post('/api/processar/stream', async (req, res) => {
+app.post('/api/processar/stream', autenticarUsuario, async (req, res) => {
   const { input, historicoMensagens, dataHoraAtual, perfil, planoAtual, memoria } = req.body;
 
   if (!input || input.trim().length === 0) {
@@ -272,6 +282,16 @@ app.post('/api/processar/stream', async (req, res) => {
     });
 
     res.end();
+
+    // Persiste no Supabase em background — não bloqueia a resposta
+    const userId = req.userId;
+    Promise.all([
+      plano            ? salvarPlano(userId, plano)                                           : Promise.resolve(),
+      memoriaAtualizada ? salvarMemoria(userId, memoriaAtualizada)                            : Promise.resolve(),
+      salvarHistorico(userId, [], historicoAtualizado),
+      perfil            ? salvarPerfil(userId, { ...perfil, contadorInteracoes: (perfil.contadorInteracoes || 0) + 1 }) : Promise.resolve(),
+    ]).catch(err => console.error('Erro ao salvar no Supabase (stream):', err));
+
   } catch (error) {
     console.error('Erro no stream:', error);
     sendEvent({ type: 'error', erro: error.message || 'Erro interno' });
@@ -280,7 +300,7 @@ app.post('/api/processar/stream', async (req, res) => {
 });
 
 // ── Rota clássica (fallback) — conversa com a Flora ──────────────────────────
-app.post('/api/processar', async (req, res) => {
+app.post('/api/processar', autenticarUsuario, async (req, res) => {
   try {
     const { input, historicoMensagens, dataHoraAtual, perfil, planoAtual, memoria } = req.body;
 
@@ -312,6 +332,16 @@ app.post('/api/processar', async (req, res) => {
       perguntaInjetada: perguntaFeita || null,
       memoriaAtualizada,
     });
+
+    // Persiste no Supabase em background
+    const userId = req.userId;
+    Promise.all([
+      plano             ? salvarPlano(userId, plano)                                           : Promise.resolve(),
+      memoriaAtualizada ? salvarMemoria(userId, memoriaAtualizada)                             : Promise.resolve(),
+      salvarHistorico(userId, [], historicoAtualizado),
+      perfil            ? salvarPerfil(userId, { ...perfil, contadorInteracoes: (perfil.contadorInteracoes || 0) + 1 }) : Promise.resolve(),
+    ]).catch(err => console.error('Erro ao salvar no Supabase (processar):', err));
+
   } catch (error) {
     console.error('Erro na API:', error);
     if (error.status === 401) return res.status(401).json({ erro: 'Chave de API inválida' });
@@ -319,8 +349,56 @@ app.post('/api/processar', async (req, res) => {
   }
 });
 
+// ── Dados do usuário ──────────────────────────────────────────────────────────
+app.get('/api/usuario/dados', autenticarUsuario, async (req, res) => {
+  try {
+    const dados = await carregarDadosUsuario(req.userId);
+    res.json(dados);
+  } catch (error) {
+    console.error('Erro ao carregar dados:', error);
+    res.status(500).json({ erro: 'Erro ao carregar dados do usuário' });
+  }
+});
+
+app.post('/api/usuario/tarefas-concluidas', autenticarUsuario, async (req, res) => {
+  try {
+    const { tarefaIds } = req.body;
+    await salvarTarefasConcluidas(req.userId, tarefaIds);
+    res.json({ sucesso: true });
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao salvar tarefas concluídas' });
+  }
+});
+
+app.post('/api/usuario/salvar-plano', autenticarUsuario, async (req, res) => {
+  try {
+    await salvarPlano(req.userId, req.body.plano);
+    res.json({ sucesso: true });
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao salvar plano' });
+  }
+});
+
+app.post('/api/usuario/salvar-memoria', autenticarUsuario, async (req, res) => {
+  try {
+    await salvarMemoria(req.userId, req.body.memoria);
+    res.json({ sucesso: true });
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao salvar memória' });
+  }
+});
+
+app.post('/api/usuario/salvar-perfil', autenticarUsuario, async (req, res) => {
+  try {
+    await salvarPerfil(req.userId, req.body.perfil);
+    res.json({ sucesso: true });
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao salvar perfil' });
+  }
+});
+
 // ── Estado da Semana — análise em linguagem natural via Claude ────────────────
-app.post('/api/estado-semana', async (req, res) => {
+app.post('/api/estado-semana', autenticarUsuario, async (req, res) => {
   const { planoAtual, scoreDiscreto = 0, rotina = null } = req.body;
 
   // Sem plano: resposta neutra
@@ -481,7 +559,7 @@ app.get('/api/gamificacao', (req, res) => {
 });
 
 // ── Plano de Ação — inicia conversa a partir do diagnóstico do Estado da Semana ─
-app.post('/api/plano-acao', async (req, res) => {
+app.post('/api/plano-acao', autenticarUsuario, async (req, res) => {
   const { diagnostico, planoAtual, memoria, perfil } = req.body;
 
   if (!diagnostico?.titulo) {
