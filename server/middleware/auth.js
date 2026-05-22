@@ -4,21 +4,41 @@ async function autenticarUsuario(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ erro: 'Token de autenticação necessário' });
+    return res.status(401).json({
+      erro: 'Token de autenticação necessário',
+      codigo: 'NO_TOKEN',
+    });
   }
 
   const token = authHeader.replace('Bearer ', '');
 
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      return res.status(401).json({ erro: 'Token inválido ou expirado' });
+
+    if (error) {
+      console.error('Erro de autenticação Supabase:', error.message);
+      return res.status(401).json({
+        erro: 'Token inválido ou expirado. Faça login novamente.',
+        codigo: 'INVALID_TOKEN',
+      });
     }
+
+    if (!user) {
+      return res.status(401).json({
+        erro: 'Usuário não encontrado.',
+        codigo: 'USER_NOT_FOUND',
+      });
+    }
+
     req.userId = user.id;
     req.user   = user;
     next();
   } catch (err) {
-    return res.status(401).json({ erro: 'Erro na autenticação' });
+    console.error('Erro no middleware de auth:', err);
+    return res.status(401).json({
+      erro: 'Erro na autenticação. Tente novamente.',
+      codigo: 'AUTH_ERROR',
+    });
   }
 }
 

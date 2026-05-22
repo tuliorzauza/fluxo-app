@@ -127,3 +127,21 @@ Criar memória técnica contínua para:
 - Vercel: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
 ---
+
+### [2026-05-21] BUG-003 — "Token inválido ou expirado" após onboarding
+
+**Sintoma:** Usuário completa onboarding e tenta conversar com a Flora — recebe erro 401 "Token inválido ou expirado".
+
+**Causa raiz:** `getAuthHeaders()` chamava `supabase.auth.getSession()` sem verificar o tempo de expiração do token. Durante o onboarding o token pode estar prestes a vencer (< 60s) ou já ter vencido. Nenhum refresh era feito antes de enviar o token — o backend rejeitava com 401. Sem retry, o erro chegava direto ao usuário.
+
+**Impacto:** Funcionalidade core quebrada — o primeiro uso após login/onboarding falhava silenciosamente ou exibia mensagem de erro técnica.
+
+**Solução aplicada:**
+1. `getAuthHeaders()` agora verifica `session.expires_at`: se token expira em < 60s (ou se não há sessão), chama `supabase.auth.refreshSession()` antes de retornar o header.
+2. `fetchComAuth()` — nova função que envolve todos os fetch autenticados: se receber 401, tenta refresh + retry automático uma única vez.
+3. Todos os fetch que usavam `getAuthHeaders()` diretamente foram migrados para `fetchComAuth()`.
+4. `server/middleware/auth.js` agora loga o erro exato do Supabase e retorna códigos de erro (`NO_TOKEN`, `INVALID_TOKEN`, `USER_NOT_FOUND`, `AUTH_ERROR`) para facilitar debug futuro.
+
+**Risco futuro:** O retry é feito apenas uma vez. Se o refresh falhar (sessão completamente inválida), o usuário precisará refazer o login manualmente — comportamento correto e esperado.
+
+---

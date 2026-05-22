@@ -151,14 +151,54 @@ function verificarNotificacoes(planoAtual, memoriaAtual) {
   }
 }
 
-// ── Helper: headers autenticados ─────────────────────────────────────────────
+// ── Helper: headers autenticados com refresh proativo ────────────────────────
 async function getAuthHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  const { data: { session }, error } = await supabase.auth.getSession();
+
+  // Sem sessão ou erro → tenta refresh
+  if (error || !session) {
+    const { data: refreshData } = await supabase.auth.refreshSession();
+    const token = refreshData?.session?.access_token;
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }
+
+  // Token expira em menos de 60s → renova antes de usar
+  const agora = Math.floor(Date.now() / 1000);
+  if (session.expires_at && session.expires_at - agora < 60) {
+    const { data: refreshData } = await supabase.auth.refreshSession();
+    const token = refreshData?.session?.access_token;
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }
+
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(session.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
   };
+}
+
+// ── fetch autenticado com retry automático em caso de 401 ────────────────────
+async function fetchComAuth(url, opcoes = {}) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(url, { ...opcoes, headers });
+
+  if (res.status === 401) {
+    const { data } = await supabase.auth.refreshSession();
+    if (data?.session) {
+      const novasHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${data.session.access_token}`,
+      };
+      return fetch(url, { ...opcoes, headers: novasHeaders });
+    }
+  }
+
+  return res;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,10 +413,8 @@ export default function App() {
         day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/processar/stream`, {
+      const res = await fetchComAuth(`${API_URL}/api/processar/stream`, {
         method: 'POST',
-        headers: authHeaders,
         body: JSON.stringify({
           input,
           historicoMensagens: histApi,
@@ -576,10 +614,8 @@ export default function App() {
     setCarregando(true);
     setErro(null);
     try {
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/plano-acao`, {
+      const res = await fetchComAuth(`${API_URL}/api/plano-acao`, {
         method: 'POST',
-        headers: authHeaders,
         body: JSON.stringify({
           diagnostico,
           planoAtual: plano,
@@ -834,8 +870,7 @@ export default function App() {
   // ── Carregar dados do usuário do Supabase ────────────────────────────────
   const carregarDadosUsuario = useCallback(async () => {
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/usuario/dados`, { headers });
+      const res = await fetchComAuth(`${API_URL}/api/usuario/dados`);
       if (!res.ok) return;
       const dados = await res.json();
 
@@ -895,18 +930,17 @@ export default function App() {
 
     migracaoFeitaRef.current = true;
     try {
-      const headers = await getAuthHeaders();
       await Promise.all([
-        planoLocal ? fetch(`${API_URL}/api/usuario/salvar-plano`, {
-          method: 'POST', headers,
+        planoLocal ? fetchComAuth(`${API_URL}/api/usuario/salvar-plano`, {
+          method: 'POST',
           body: JSON.stringify({ plano: planoLocal }),
         }) : Promise.resolve(),
-        memoriaLocal ? fetch(`${API_URL}/api/usuario/salvar-memoria`, {
-          method: 'POST', headers,
+        memoriaLocal ? fetchComAuth(`${API_URL}/api/usuario/salvar-memoria`, {
+          method: 'POST',
           body: JSON.stringify({ memoria: memoriaLocal }),
         }) : Promise.resolve(),
-        perfilLocal ? fetch(`${API_URL}/api/usuario/salvar-perfil`, {
-          method: 'POST', headers,
+        perfilLocal ? fetchComAuth(`${API_URL}/api/usuario/salvar-perfil`, {
+          method: 'POST',
           body: JSON.stringify({ perfil: perfilLocal }),
         }) : Promise.resolve(),
       ]);
@@ -924,10 +958,8 @@ export default function App() {
   // ── Sincronizar tarefas concluídas com Supabase ─────────────────────────
   async function sincronizarTarefasConcluidas(tarefaIds) {
     try {
-      const headers = await getAuthHeaders();
-      await fetch(`${API_URL}/api/usuario/tarefas-concluidas`, {
+      await fetchComAuth(`${API_URL}/api/usuario/tarefas-concluidas`, {
         method: 'POST',
-        headers,
         body: JSON.stringify({ tarefaIds }),
       });
     } catch (err) {
