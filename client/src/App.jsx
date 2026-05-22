@@ -430,6 +430,8 @@ export default function App() {
         day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
+      const headers = await getAuthHeaders();
+      console.log('[DEBUG] enviarMensagem — Authorization:', headers.Authorization?.slice(0, 30) + '...');
       const res = await fetchComAuth(`${API_URL}/api/processar/stream`, {
         method: 'POST',
         body: JSON.stringify({

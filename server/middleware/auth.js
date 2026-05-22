@@ -11,9 +11,11 @@ async function autenticarUsuario(req, res, next) {
   }
 
   const token = authHeader.replace('Bearer ', '');
+  console.log('[AUTH] Token recebido (primeiros 20 chars):', token?.slice(0, 20));
 
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
+    console.log('[AUTH] getUser resultado:', error ? `ERRO: ${error.message}` : `OK — userId: ${user?.id}`);
 
     if (error) {
       console.error('Erro de autenticação Supabase:', error.message);

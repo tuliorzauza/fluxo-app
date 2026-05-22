@@ -168,3 +168,23 @@ Criar memória técnica contínua para:
 **Risco futuro:** Os `console.log` de debug foram mantidos intencionalmente para facilitar diagnóstico em produção. Remover quando o fluxo estiver estável.
 
 ---
+
+### [2026-05-22] BUG-005 — Token inválido ao chamar a Flora após login com Google
+
+**Sintoma:** Login funciona, sessão Supabase existe no cliente, mas ao enviar mensagem para a Flora o backend rejeita com 401 "Token inválido ou expirado".
+
+**Causa raiz:** Race condition: imediatamente após o OAuth redirect, `getSession()` pode retornar `null` (sessão ainda propagando). `getAuthHeaders()` interpretava isso como ausência de sessão e tentava `refreshSession()` — que também falhava porque o token ainda não estava disponível localmente. O resultado era uma requisição sem header `Authorization` ou com token inválido.
+
+Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`/api/processar/stream`), mas o timing entre `res.setHeader()`, `res.flushHeaders()` e a validação do token tornava difícil diagnosticar onde exatamente ocorria a falha.
+
+**Solução aplicada:**
+1. Validação de token movida para inline no handler SSE — elimina ambiguidade de middleware e garante que a auth ocorre ANTES de `res.flushHeaders()`.
+2. Logs de debug adicionados em 3 camadas:
+   - `[DEBUG]` em `enviarMensagem` (App.jsx): mostra os primeiros 30 chars do header Authorization
+   - `[SSE]` no handler SSE (server/index.js): mostra presença do header, token (20 chars) e resultado do `getUser`
+   - `[AUTH]` no middleware `autenticarUsuario` (server/middleware/auth.js): token (20 chars) e resultado do `getUser`
+3. Handler SSE agora retorna 401 puro (JSON) se auth falhar — antes de qualquer `res.flushHeaders()`.
+
+**Risco futuro:** Logs de debug foram mantidos intencionalmente. Remover `[DEBUG]`, `[SSE]` e `[AUTH]` quando o fluxo estiver estável em produção.
+
+---

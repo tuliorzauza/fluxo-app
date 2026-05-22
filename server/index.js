@@ -8,6 +8,7 @@ const { preservarEstadosTarefas, limitarHistorico, extrairTemasRelevantes } = re
 const { selecionarProximaPergunta } = require('./data/floraQuestions');
 const { MEMORIA_INICIAL, mesclarMemoria, atualizarGamificacao } = require('./services/userMemory');
 const { autenticarUsuario } = require('./middleware/auth');
+const { supabase } = require('./services/supabase');
 const {
   carregarDadosUsuario,
   salvarPlano,
@@ -224,14 +225,41 @@ app.use(express.json({ limit: '10mb' }));
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Rota streaming SSE — conversa com a Flora ─────────────────────────────────
-app.post('/api/processar/stream', autenticarUsuario, async (req, res) => {
+// Auth inline (não como middleware separado) para garantir ordem correta com SSE
+app.post('/api/processar/stream', async (req, res) => {
+  // ── Validar token ANTES de qualquer header SSE ──────────────────────────────
+  const authHeader = req.headers.authorization;
+  console.log('[SSE] Authorization header presente:', !!authHeader,
+    authHeader ? `| primeiros 20: ${authHeader.slice(0, 27)}...` : '');
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ erro: 'Token de autenticação necessário', codigo: 'NO_TOKEN' });
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  console.log('[SSE] Token (primeiros 20 chars):', token.slice(0, 20) + '...');
+
+  let userId;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    console.log('[SSE] getUser resultado:', error ? `ERRO: ${error.message}` : `OK — userId: ${user?.id}`);
+    if (error || !user) {
+      return res.status(401).json({ erro: 'Token inválido ou expirado', codigo: 'INVALID_TOKEN' });
+    }
+    userId = user.id;
+  } catch (err) {
+    console.error('[SSE] Exceção na validação do token:', err.message);
+    return res.status(401).json({ erro: 'Erro na autenticação', codigo: 'AUTH_ERROR' });
+  }
+  // ── Fim da validação ────────────────────────────────────────────────────────
+
   const { input, historicoMensagens, dataHoraAtual, perfil, planoAtual, memoria } = req.body;
 
   if (!input || input.trim().length === 0) {
     return res.status(400).json({ erro: 'Input vazio' });
   }
 
-  // Cabeçalhos SSE
+  // Cabeçalhos SSE — só depois da auth estar confirmada
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
