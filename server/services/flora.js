@@ -46,18 +46,41 @@ function _compromisosDoDia(comproms, dataYMD) {
   }).sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
 }
 
-function _formatarAgendaDia(comproms, dataYMD) {
+function _classificarCompromisso(comp, hojeStr, horaAtualMinutos) {
+  // Só classifica temporalmente compromissos de hoje com horário definido
+  if (!comp.hora) return 'sem_horario';
+  const [h, m] = comp.hora.split(':').map(Number);
+  const horaCompMinutos = h * 60 + m;
+  const duracao = comp.duracao || 60;
+  if (horaCompMinutos + duracao < horaAtualMinutos) return 'passado';
+  if (horaCompMinutos > horaAtualMinutos) return 'futuro';
+  return 'agora';
+}
+
+function _formatarAgendaDia(comproms, dataYMD, hojeStr, horaAtualMinutos) {
   const items = _compromisosDoDia(comproms, dataYMD);
   if (!items.length) return '  (nenhum compromisso cadastrado)';
+  const ehHoje = dataYMD === hojeStr;
   return items.map(c => {
     const h = (c.hora || '??:??').replace(':', 'h');
+    let linha;
     if (c.duracao && c.hora) {
       const [hh, mm] = c.hora.split(':').map(Number);
       const fimMin = hh * 60 + mm + c.duracao;
       const fim = `${String(Math.floor(fimMin / 60)).padStart(2, '0')}h${String(fimMin % 60).padStart(2, '0')}`;
-      return `  ${h}-${fim}: ${c.titulo}`;
+      linha = `  ${h}-${fim}: ${c.titulo}`;
+    } else {
+      linha = `  ${h}: ${c.titulo}`;
     }
-    return `  ${h}: ${c.titulo}`;
+    // Só adiciona classificação temporal para o dia de hoje
+    if (ehHoje) {
+      const classificacao = _classificarCompromisso(c, hojeStr, horaAtualMinutos);
+      const status = c.concluida ? '✅ concluído' : '⏳ pendente';
+      if (classificacao === 'passado') linha += ` — [JÁ PASSOU] ${status}`;
+      else if (classificacao === 'agora') linha += ` — [AGORA] ${status}`;
+      // futuro e sem_horario: não adiciona label (comportamento normal)
+    }
+    return linha;
   }).join('\n');
 }
 
@@ -93,6 +116,7 @@ function buildFloraPrompt(perfil, perguntaProfunda = null, memoria = null, compr
 
   // Agenda do dia para injeção no prompt
   const hojeStr = agora.toISOString().split('T')[0];
+  const horaAtualMinutos = agora.getHours() * 60 + agora.getMinutes();
   const amanhaDate = new Date(agora); amanhaDate.setDate(amanhaDate.getDate() + 1);
   const amanhaStr = amanhaDate.toISOString().split('T')[0];
   const comproms = planoAtual?.compromissos || [];
@@ -186,7 +210,7 @@ ${diasSemana.map(dataYMD => {
     const d = new Date(dataYMD + 'T12:00:00');
     const nomeDia = NOMES_DIAS[d.getDay()];
     const label = dataYMD === hojeStr ? '← HOJE' : dataYMD === amanhaStr ? '← AMANHÃ' : '';
-    return `${nomeDia} ${dataYMD} ${label}:\n${_formatarAgendaDia(comproms, dataYMD)}\nLivre: ${_horariosLivres(comproms, dataYMD)}`;
+    return `${nomeDia} ${dataYMD} ${label}:\n${_formatarAgendaDia(comproms, dataYMD, hojeStr, horaAtualMinutos)}\nLivre: ${_horariosLivres(comproms, dataYMD)}`;
   }).join('\n\n')}
 
 REGRA CRÍTICA DE RECORRÊNCIA:
@@ -297,6 +321,48 @@ REGRAS DE USO DA MEMÓRIA:
   → Exemplo: { "memoriaUpdate": { "sono.horarioDormir": "23:30", "trabalho.horarioEntrada": "09:00" } }
 `;
 
+  // Bloco de regras de contexto temporal (hoje)
+  const blocoContextoTemporal = `
+══════════════════════════════════
+REGRAS DE CONTEXTO TEMPORAL — OBRIGATÓRIAS
+══════════════════════════════════
+Na agenda de HOJE acima, cada compromisso tem um marcador de status:
+  [JÁ PASSOU] ✅ concluído  → já ocorreu e foi feito
+  [JÁ PASSOU] ⏳ pendente   → já ocorreu mas não foi marcado
+  [AGORA]                   → está acontecendo agora
+  (sem marcador)            → ainda está no futuro
+
+REGRAS DE COMPORTAMENTO POR STATUS:
+
+[JÁ PASSOU] ✅ concluído:
+→ NUNCA citar como se ainda fosse acontecer
+→ Se relevante, perguntar como foi (tom leve, não formal):
+  "Acabou a academia — como foi o treino?"
+  "Trabalho acabou, conseguiu fazer tudo?"
+
+[JÁ PASSOU] ⏳ pendente:
+→ Cobrar com carinho, não cobrar com julgamento:
+  "Você foi pra academia? Não vi marcar como feito."
+  "Teve a reunião de hoje mais cedo — aconteceu?"
+→ Oferecer reagendar se não foi feito
+
+[AGORA]:
+→ Reconhecer que o usuário está no meio de algo:
+  "Você deve estar no trabalho agora"
+  "Isso é enquanto está na academia?"
+
+(sem marcador — futuro):
+→ Citar normalmente: "você tem X às Y"
+
+AO ABRIR O APP OU PEDIR RESUMO DO DIA — ORDEM OBRIGATÓRIA:
+1. Primeiro: o que já passou (como foi? foi feito?)
+2. Depois: o que está acontecendo agora
+3. Por último: o que ainda vem
+
+NUNCA citar compromisso marcado [JÁ PASSOU] como se ainda fosse acontecer.
+NUNCA dizer "você tem academia às 5h30" se já são 7h e ela aparece como [JÁ PASSOU].
+`;
+
   // Bloco de compromissos pendentes (passados sem confirmação)
   const blocoCompromissosPendentes = compromissosPendentes.length > 0 ? `
 ══════════════════════════════════
@@ -375,6 +441,7 @@ ${blocoGamificacao}
 ${blocoMemoria}
 ${blocoRotina}
 ${blocoAgenda}
+${blocoContextoTemporal}
 ${blocoCompromissosPendentes}
 ${blocoPerguntas}
 ══════════════════════════════════

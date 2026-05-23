@@ -189,6 +189,43 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 
 ---
 
+### [2026-05-22] BUG-007 — Flora citava compromissos passados como futuros
+
+**Sintoma:** Flora às 07h13 dizia "você tem academia às 5h30 e trabalho às 6h30" — ambos já haviam passado e estavam concluídos.
+
+**Causa raiz:** `_formatarAgendaDia` em `server/services/flora.js` formatava todos os compromissos do dia de forma idêntica, sem nenhuma indicação de se já haviam ocorrido. A Flora não tinha como saber o que já tinha passado vs o que ainda estava por vir.
+
+**Impacto:** Flora soava equivocada e desconexa da realidade do usuário. Citava como futuro eventos que já tinham acontecido há horas, ignorando concluídos.
+
+**Solução aplicada:**
+1. Nova função `_classificarCompromisso` em `flora.js`: compara hora do compromisso (+ duração) com hora atual em minutos. Retorna `'passado'`, `'agora'` ou `'futuro'`.
+2. `_formatarAgendaDia` atualizada: aceita `hojeStr` e `horaAtualMinutos`. Para o dia de hoje, adiciona `[JÁ PASSOU] ✅ concluído` / `[JÁ PASSOU] ⏳ pendente` / `[AGORA]` na linha de cada compromisso. Dias futuros permanecem sem marcador.
+3. Novo bloco `blocoContextoTemporal` no system prompt com regras obrigatórias de comportamento por status: perguntar "como foi?" para passados, reconhecer "agora", citar normalmente o futuro. Ordem obrigatória ao resumir o dia: passado → agora → futuro.
+
+**Risco futuro:** Classificação usa hora do servidor (UTC ou timezone do Railway). Se o servidor estiver em UTC e o usuário em UTC-3, o cálculo pode errar. Monitorar quando houver usuários em fusos diferentes.
+
+---
+
+### [2026-05-22] DECISÃO — Chat limpo a cada sessão (Opção A)
+
+**Decisão de produto:** Chat visual limpa a cada login. Flora demonstra memória contextual nas respostas, não pelo histórico visual.
+
+**Filosofia:** "A Flora não guarda conversas. Ela guarda entendimento."
+
+**Implementação:** `carregarDadosUsuario` não carrega mais `historicoDisplay` do Supabase. O `historicoApi` (contexto da Flora) continua sendo carregado e enviado em cada request — a Flora ainda "lembra" tudo. Apenas a UI começa em branco.
+
+**Risco futuro:** Usuário pode estranhar não ver conversas anteriores. Considerar mensagem de boas-vindas que mencione a memória ("Lembro que você estava trabalhando em X na semana passada...").
+
+---
+
+### [2026-05-22] DECISÃO — Badge âmbar de pendências (substituiu ScoreCompact)
+
+**Problema:** ScoreCompact mostrava círculo vermelho com "0" quando `scoreTempoLivre = 0` — sem plano cadastrado, sem significado para o usuário.
+
+**Solução:** Substituído por badge âmbar que mostra `totalPendentesHoje` (tarefas com prazo hoje + compromissos de hoje não concluídos). Some completamente quando não há pendências. Aparece apenas quando `plano` existe E `totalPendentesHoje > 0`.
+
+---
+
 ### [2026-05-22] BUG-006 — Dados não sincronizados entre dispositivos (tabelas Supabase vazias)
 
 **Sintoma:** Usuário faz onboarding em um dispositivo, abre o app em outro dispositivo com a mesma conta Google e refaz o onboarding do zero. Tabelas `planos` e `memorias` no Supabase estavam vazias após conversas com a Flora.

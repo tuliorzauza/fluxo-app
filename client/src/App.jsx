@@ -952,10 +952,9 @@ export default function App() {
         ls_set(SK.memoria, dados.memoria);
       }
 
-      if (dados.historicoDisplay?.length > 0) {
-        setMensagens(dados.historicoDisplay);
-        ls_set(SK.histDisplay, dados.historicoDisplay);
-      }
+      // historicoDisplay NÃO carregado intencionalmente — decisão de produto:
+      // "A Flora não guarda conversas. Ela guarda entendimento."
+      // Chat sempre inicia limpo. Contexto é mantido via historicoApi (abaixo).
       if (dados.historicoApi?.length > 0) {
         setHistApi(dados.historicoApi);
         ls_set(SK.histApi, dados.historicoApi);
@@ -1044,8 +1043,24 @@ export default function App() {
 
   // ── Score para o header ──────────────────────────────────────────────────
   const planoComScore = plano ? calcularScore(plano) : null;
-  const score = planoComScore?.diagnostico?.scoreTempoLivre || 0;
   const primeiroNome = perfil?.nome?.split(' ')[0];
+
+  // ── Pendências do dia (substitui o ScoreCompact) ─────────────────────────
+  const hoje       = new Date().toISOString().split('T')[0];
+  const diaSemana  = new Date().getDay();
+  const tarefasPendentesHoje = (plano?.tarefas || []).filter(t => {
+    if (t.concluida) return false;
+    return t.prazo === hoje;
+  }).length;
+  const compromissosHoje = (plano?.compromissos || []).filter(c => {
+    if (c.concluida) return false;
+    if (c.recorrencia?.tipo === 'semanal') {
+      return (c.recorrencia.diasSemana || []).includes(diaSemana);
+    }
+    if (c.recorrencia?.tipo === 'diaria') return true;
+    return c.data === hoje;
+  }).length;
+  const totalPendentesHoje = tarefasPendentesHoje + compromissosHoje;
   const gam = memoria?.gamificacao;
 
   // ── App principal ────────────────────────────────────────────────────────
@@ -1097,7 +1112,19 @@ export default function App() {
               )}
             </button>
           )}
-          {plano && <ScoreCompact score={score} />}
+          {plano && totalPendentesHoje > 0 && (
+            <div
+              title={`${totalPendentesHoje} pendência${totalPendentesHoje > 1 ? 's' : ''} hoje`}
+              className="flex items-center gap-1 px-2 py-1 rounded-full"
+              style={{
+                background: 'rgba(245,158,11,0.12)',
+                border: '1px solid rgba(245,158,11,0.3)',
+              }}
+            >
+              <span className="text-xs font-bold text-amber-500 font-titulo">{totalPendentesHoje}</span>
+              <span className="text-[10px] text-amber-500/70 hidden sm:inline">hoje</span>
+            </div>
+          )}
           {notificacaoPermissao === 'default' && (
             <button
               onClick={ativarNotificacoes}
