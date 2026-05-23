@@ -389,6 +389,14 @@ export default function App() {
       ls_set('fluxo_compromissos_fixos_pendentes', cfixos.descricao.trim());
     }
 
+    // Persiste perfil no Supabase para sincronização multi-dispositivo
+    fetchComAuth(`${API_URL}/api/usuario/salvar-perfil`, {
+      method: 'POST',
+      body: JSON.stringify({ perfil: respostas }),
+    })
+      .then(() => console.log('[SAVE] Perfil do onboarding salvo no Supabase'))
+      .catch(err => console.error('[SAVE] Erro ao salvar perfil:', err));
+
     const msgBV = {
       tipo: 'flora',
       texto: mensagemBoasVindas(respostas),
@@ -910,32 +918,45 @@ export default function App() {
 
       const dados = await res.json();
 
-      // Se não há dados no Supabase mas há no localStorage → migrar
-      const semDadosNoSupabase = !dados.perfil && !dados.plano && !dados.memoria;
+      console.log('[LOAD] Dados do Supabase:', {
+        temPerfil: !!dados.perfil?.nome,
+        temPlano: !!dados.plano,
+        temMemoria: !!dados.memoria,
+        historicoDisplay: dados.historicoDisplay?.length,
+      });
+
+      // Se não há nenhum dado no Supabase → tenta migrar do localStorage (primeiro login)
+      const semDadosNoSupabase = !dados.perfil?.nome && !dados.plano && !dados.memoria;
       if (semDadosNoSupabase) {
         await migrarLocalStorageParaSupabaseRef.current?.();
         return; // após migrar, o próximo carregamento buscará do Supabase
       }
 
-      if (dados.perfil) {
+      // Perfil — se existe no Supabase, onboarding já foi feito
+      if (dados.perfil?.nome) {
         setPerfil(dados.perfil);
         ls_set(SK.perfil, dados.perfil);
         setOnboardingFeito(true);
         ls_set(SK.onboarding, true);
       }
-      if (dados.plano) {
+
+      // Plano — Supabase SEMPRE sobrescreve localStorage
+      if (dados.plano?.compromissos || dados.plano?.tarefas) {
         setPlano(dados.plano);
         ls_set(SK.plano, dados.plano);
       }
+
+      // Memória — Supabase SEMPRE sobrescreve localStorage
       if (dados.memoria) {
         setMemoria(dados.memoria);
         ls_set(SK.memoria, dados.memoria);
       }
-      if (dados.historicoDisplay?.length) {
+
+      if (dados.historicoDisplay?.length > 0) {
         setMensagens(dados.historicoDisplay);
         ls_set(SK.histDisplay, dados.historicoDisplay);
       }
-      if (dados.historicoApi?.length) {
+      if (dados.historicoApi?.length > 0) {
         setHistApi(dados.historicoApi);
         ls_set(SK.histApi, dados.historicoApi);
       }

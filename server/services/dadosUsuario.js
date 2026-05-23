@@ -9,6 +9,13 @@ async function carregarDadosUsuario(userId) {
     supabase.from('tarefas_concluidas').select('*').eq('user_id', userId).single(),
   ]);
 
+  console.log('[LOAD] Dados encontrados para userId:', userId, {
+    temPerfil: !!perfil.data,
+    temPlano: !!plano.data,
+    temMemoria: !!memoria.data,
+    erros: [perfil.error?.message, plano.error?.message, memoria.error?.message].filter(Boolean),
+  });
+
   return {
     perfil: perfil.data || null,
     plano: plano.data ? {

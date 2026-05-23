@@ -316,13 +316,24 @@ app.post('/api/processar/stream', async (req, res) => {
     res.end();
 
     // Persiste no Supabase em background — não bloqueia a resposta
-    // NOTA: userId vem do inline auth acima (let userId = user.id), NÃO de req.userId (que é undefined aqui)
-    Promise.all([
-      plano            ? salvarPlano(userId, plano)                                           : Promise.resolve(),
-      memoriaAtualizada ? salvarMemoria(userId, memoriaAtualizada)                            : Promise.resolve(),
-      salvarHistorico(userId, [], historicoAtualizado),
-      perfil            ? salvarPerfil(userId, { ...perfil, contadorInteracoes: (perfil.contadorInteracoes || 0) + 1 }) : Promise.resolve(),
-    ]).catch(err => console.error('Erro ao salvar no Supabase (stream):', err));
+    console.log('[SAVE] userId ao salvar:', userId);
+    console.log('[SAVE] plano existe:', !!plano);
+    console.log('[SAVE] memoria existe:', !!memoriaAtualizada);
+    if (userId) {
+      Promise.all([
+        plano ? salvarPlano(userId, plano).then(() =>
+          console.log('[SAVE] Plano salvo para:', userId)
+        ) : Promise.resolve(),
+        memoriaAtualizada ? salvarMemoria(userId, memoriaAtualizada).then(() =>
+          console.log('[SAVE] Memória salva para:', userId)
+        ) : Promise.resolve(),
+        historicoAtualizado ? salvarHistorico(userId, [], historicoAtualizado).then(() =>
+          console.log('[SAVE] Histórico salvo para:', userId)
+        ) : Promise.resolve(),
+      ]).catch(err =>
+        console.error('[SAVE] Erro crítico ao salvar:', err.message)
+      );
+    }
 
   } catch (error) {
     console.error('Erro no stream:', error);
