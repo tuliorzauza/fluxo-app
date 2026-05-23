@@ -188,3 +188,29 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 **Risco futuro:** Logs de debug foram mantidos intencionalmente. Remover `[DEBUG]`, `[SSE]` e `[AUTH]` quando o fluxo estiver estável em produção.
 
 ---
+
+### [2026-05-22] BUG-006 — Dados não sincronizados entre dispositivos (tabelas Supabase vazias)
+
+**Sintoma:** Usuário faz onboarding em um dispositivo, abre o app em outro dispositivo com a mesma conta Google e refaz o onboarding do zero. Tabelas `planos` e `memorias` no Supabase estavam vazias após conversas com a Flora.
+
+**Causa raiz:** Três problemas independentes sobrepostos:
+
+1. **Perfil nunca salvo no Supabase durante o onboarding:** `concluirOnboarding` salvava apenas no `localStorage`. Ao logar em novo dispositivo, `carregarDadosUsuario` via `semDadosNoSupabase = true` → chamava `migrarLocalStorageParaSupabase` → mas o novo dispositivo tem localStorage vazio → nada migrado → usuário refazia onboarding.
+
+2. **Shadow variable no handler SSE destruía `userId` antes do save:** `const userId = req.userId` (linha 315, commit adc1932) redeclarava a variável como `undefined` porque o SSE handler usa validação inline (não middleware) e `req.userId` nunca é setado. O save silenciosamente recebia `userId = undefined`. Corrigido no commit `da3f8a4` — mas os saves ainda falhavam por causa do ponto 1 (perfil ausente → sem dados para carregar → loop).
+
+3. **`carregarDadosUsuario` usava condição fraca:** `if (dados.perfil)` verificava apenas se o objeto existia, não se tinha dados úteis (`nome`). Poderia aceitar um perfil vazio `{}` como "perfil encontrado".
+
+**Impacto:** Funcionalidade core quebrada — sincronização multi-dispositivo não funcionava para nenhum usuário.
+
+**Solução aplicada:**
+1. `concluirOnboarding` agora chama `fetchComAuth('/api/usuario/salvar-perfil')` ao final (fire-and-forget — não bloqueia a transição de tela).
+2. Handler SSE: logs `[SAVE]` adicionados antes e depois de cada save; saves protegidos por `if (userId)`; `salvarPerfil` removido do loop SSE (responsabilidade do endpoint dedicado).
+3. `carregarDadosUsuario`: condição `semDadosNoSupabase` usa `dados.perfil?.nome`; load do perfil usa `if (dados.perfil?.nome)`; plano usa `if (dados.plano?.compromissos || dados.plano?.tarefas)`; log `[LOAD]` adicionado.
+4. `server/services/dadosUsuario.js`: log `[LOAD]` mostrando o que foi encontrado por userId e erros por tabela.
+
+**Risco futuro:**
+- Se o servidor estiver offline no momento do onboarding, o save do perfil falha silenciosamente. O usuário terá que refazer onboarding na próxima sessão (não é um problema crítico — o onboarding é rápido).
+- O histórico de display não é salvo no Supabase (só o histórico da API). Conversas anteriores não aparecem em novos dispositivos — comportamento aceitável por ora.
+
+---
