@@ -1,4 +1,7 @@
 require('dotenv').config();
+console.log('[ENV CHECK] SUPABASE_URL:', process.env.SUPABASE_URL);
+console.log('[ENV CHECK] SUPABASE_SERVICE_KEY (primeiros 20):', process.env.SUPABASE_SERVICE_KEY?.slice(0, 20));
+console.log('[ENV CHECK] ANTHROPIC_API_KEY (primeiros 20):', process.env.ANTHROPIC_API_KEY?.slice(0, 20));
 const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
