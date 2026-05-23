@@ -34,7 +34,9 @@ async function carregarDadosUsuario(userId) {
 }
 
 async function salvarPlano(userId, plano) {
-  const { error } = await supabase.from('planos').upsert({
+  console.log('[SAVE PLANO] userId:', userId);
+  console.log('[SAVE PLANO] plano keys:', Object.keys(plano || {}));
+  const { data, error } = await supabase.from('planos').upsert({
     user_id:          userId,
     compromissos:     plano.compromissos    || [],
     tarefas:          plano.tarefas         || [],
@@ -43,46 +45,64 @@ async function salvarPlano(userId, plano) {
     sugestao_pratica: plano.sugestaoPratica || null,
     reorganizacoes:   plano.reorganizacoes  || null,
   }, { onConflict: 'user_id' });
+  console.log('[SAVE PLANO] data:', data);
+  console.log('[SAVE PLANO] error:', JSON.stringify(error));
   if (error) throw error;
 }
 
 async function salvarMemoria(userId, memoria) {
-  const { error } = await supabase.from('memorias').upsert({
+  console.log('[SAVE MEMORIA] userId:', userId);
+  console.log('[SAVE MEMORIA] memoria keys:', Object.keys(memoria || {}));
+  const { data, error } = await supabase.from('memorias').upsert({
     user_id: userId,
     dados:   memoria,
   }, { onConflict: 'user_id' });
+  console.log('[SAVE MEMORIA] data:', data);
+  console.log('[SAVE MEMORIA] error:', JSON.stringify(error));
   if (error) throw error;
 }
 
 async function salvarHistorico(userId, historicoDisplay, historicoApi) {
-  const { error } = await supabase.from('historicos').upsert({
-    user_id:          userId,
+  console.log('[SAVE HISTORICO] userId:', userId);
+  console.log('[SAVE HISTORICO] display length:', historicoDisplay?.length);
+  console.log('[SAVE HISTORICO] api length:', historicoApi?.length);
+  const { data, error } = await supabase.from('historicos').upsert({
+    user_id:           userId,
     historico_display: historicoDisplay,
     historico_api:     historicoApi,
   }, { onConflict: 'user_id' });
+  console.log('[SAVE HISTORICO] data:', data);
+  console.log('[SAVE HISTORICO] error:', JSON.stringify(error));
   if (error) throw error;
 }
 
 async function salvarPerfil(userId, perfil) {
-  const { error } = await supabase.from('perfis').upsert({
-    id:                        userId,
-    nome:                      perfil.nome                      || null,
-    ocupacao:                  perfil.ocupacao                  || null,
-    estilo:                    perfil.estilo                    || 'equilibrada',
-    ritmo:                     perfil.ritmo                     || null,
-    desafios:                  perfil.desafios                  || [],
-    objetivos:                 perfil.objetivos                 || [],
-    contador_interacoes:       perfil.contadorInteracoes        || 0,
-    perguntas_profundas_feitas: perfil.perguntasProfundasFeitas || [],
+  console.log('[SAVE PERFIL] userId:', userId);
+  console.log('[SAVE PERFIL] nome:', perfil?.nome);
+  const { data, error } = await supabase.from('perfis').upsert({
+    id:                         userId,
+    nome:                       perfil.nome                      || null,
+    ocupacao:                   perfil.ocupacao                  || null,
+    estilo:                     perfil.estilo                    || 'equilibrada',
+    ritmo:                      perfil.ritmo                     || null,
+    desafios:                   perfil.desafios                  || [],
+    objetivos:                  perfil.objetivos                 || [],
+    contador_interacoes:        perfil.contadorInteracoes        || 0,
+    perguntas_profundas_feitas: perfil.perguntasProfundasFeitas  || [],
   }, { onConflict: 'id' });
+  console.log('[SAVE PERFIL] data:', data);
+  console.log('[SAVE PERFIL] error:', JSON.stringify(error));
   if (error) throw error;
 }
 
 async function salvarTarefasConcluidas(userId, tarefaIds) {
-  const { error } = await supabase.from('tarefas_concluidas').upsert({
-    user_id:   userId,
+  console.log('[SAVE TAREFAS] userId:', userId);
+  const { data, error } = await supabase.from('tarefas_concluidas').upsert({
+    user_id:    userId,
     tarefa_ids: tarefaIds,
   }, { onConflict: 'user_id' });
+  console.log('[SAVE TAREFAS] data:', data);
+  console.log('[SAVE TAREFAS] error:', JSON.stringify(error));
   if (error) throw error;
 }
 
