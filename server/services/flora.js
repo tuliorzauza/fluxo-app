@@ -93,7 +93,7 @@ function _horariosLivres(comproms, dataYMD) {
     return { ini, fim: ini + c.duracao };
   }).sort((a, b) => a.ini - b.ini);
   const fmt = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}`;
-  const INICIO = 6 * 60, FIM = 23 * 60;
+  const INICIO = 1 * 60, FIM = 23 * 60;
   const livres = [];
   let cursor = INICIO;
   for (const b of blocos) {
@@ -199,6 +199,8 @@ COMO POPULAR ROTINA.COMPROMETIDA:
     diasSemana.push(d.toISOString().split('T')[0]);
   }
 
+  const tarefas = planoAtual?.tarefas || [];
+
   const blocoAgenda = comproms.length > 0 ? `
 ══════════════════════════════════
 AGENDA COMPLETA DA SEMANA — HORÁRIOS BLOQUEADOS
@@ -210,7 +212,11 @@ ${diasSemana.map(dataYMD => {
     const d = new Date(dataYMD + 'T12:00:00');
     const nomeDia = NOMES_DIAS[d.getDay()];
     const label = dataYMD === hojeStr ? '← HOJE' : dataYMD === amanhaStr ? '← AMANHÃ' : '';
-    return `${nomeDia} ${dataYMD} ${label}:\n${_formatarAgendaDia(comproms, dataYMD, hojeStr, horaAtualMinutos)}\nLivre: ${_horariosLivres(comproms, dataYMD)}`;
+    const tarefasDoDia = tarefas.filter(t => !t.concluida && t.prazo === dataYMD);
+    const linhasTarefas = tarefasDoDia.length > 0
+      ? '\n' + tarefasDoDia.map(t => `  📝 ${t.titulo} [TAREFA${t.blocoSugerido ? ' — ' + t.blocoSugerido : ''}]`).join('\n')
+      : '';
+    return `${nomeDia} ${dataYMD} ${label}:\n${_formatarAgendaDia(comproms, dataYMD, hojeStr, horaAtualMinutos)}${linhasTarefas}\nLivre: ${_horariosLivres(comproms, dataYMD)}`;
   }).join('\n\n')}
 
 REGRA CRÍTICA DE RECORRÊNCIA:
@@ -229,6 +235,23 @@ REGRAS ABSOLUTAS:
    em conversas anteriores
 2. Confie SEMPRE nesta agenda, não no histórico de conversa
 3. Conflito só existe no MESMO DIA e MESMO horário
+
+REGRA CRÍTICA — SOURCE OF TRUTH:
+A agenda estruturada acima é a ÚNICA fonte de verdade
+sobre compromissos do usuário.
+
+NUNCA invente, assuma ou transfira compromissos que não
+estão explicitamente listados acima com dia e horário.
+
+O blocoRotina abaixo é CONTEXTO HISTÓRICO — descreve
+hábitos e preferências. NÃO é agenda atual.
+Se houver conflito entre blocoRotina e a agenda acima,
+a agenda estruturada SEMPRE prevalece.
+
+Antes de afirmar qualquer compromisso em qualquer dia,
+verifique mentalmente: "esse evento está listado na
+agenda estruturada com esse dia e horário específico?"
+Se não estiver → NÃO mencionar como compromisso.
 
 Quando o usuário pedir horário livre, tranquilo ou disponível:
   1. Usar SOMENTE os blocos livres listados acima
@@ -445,10 +468,10 @@ ${perfilFormatado}
 ${conselhosPorDesafio ? `ESTRATÉGIAS POR DESAFIO:\n${conselhosPorDesafio}` : ''}
 ${conselhosPorObjetivo ? `\nESTRATÉGIAS POR OBJETIVO:\n${conselhosPorObjetivo}` : ''}
 ${blocoGamificacao}
-${blocoMemoria}
-${blocoRotina}
 ${blocoAgenda}
 ${blocoContextoTemporal}
+${blocoMemoria}
+${blocoRotina}
 ${blocoCompromissosPendentes}
 ${blocoPerguntas}
 ══════════════════════════════════

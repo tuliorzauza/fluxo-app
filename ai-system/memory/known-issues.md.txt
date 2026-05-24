@@ -327,3 +327,46 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 **Nota:** `TOTAL_MIN` é calculado mas não usado — dead var, pode ser removido no futuro.
 
 ---
+
+### [2026-05-24] BUG-009 — Flora inventava compromissos baseada em blocoRotina (narrativa) em vez da agenda estruturada
+
+**Sintoma:** Flora afirmava compromissos em dias errados ou inexistentes. Exemplo real: usuário tinha redação na quarta, Flora afirmou que estava na terça. Flora usava texto narrativo do `blocoRotina` como se fosse agenda atual.
+
+**Causa raiz:** Quatro problemas sobrepostos em `server/services/flora.js`:
+
+1. **Ausência de regra explícita contra inventar compromissos.** As REGRAS ABSOLUTAS do `blocoAgenda` diziam "confie na agenda" mas não proibiam explicitamente criar compromissos a partir do `blocoRotina` ou da memória narrativa.
+
+2. **Ordem errada dos blocos no prompt.** `blocoMemoria` e `blocoRotina` apareciam ANTES de `blocoAgenda` — a Flora lia texto narrativo ("academia às 15h, trabalho das 6h às 15h") como contexto primário e depois lia a agenda estruturada, sem saber qual prevalecia.
+
+3. **Tarefas invisíveis para a Flora.** `planoAtual.tarefas` nunca era injetado no `blocoAgenda`. A Flora não sabia quais tarefas com prazo existiam em cada dia, causando sugestões conflitantes.
+
+4. **INICIO dos horários livres hardcoded em 6h.** `_horariosLivres` usava `INICIO = 6 * 60` independente do `HORA_INI = 1` configurado no calendário visual — inconsistência entre o que o usuário via no app e o que a Flora entendia como horário disponível.
+
+**Impacto:** Flora mencionava compromissos inexistentes, colocava eventos em dias errados, e não sabia sobre tarefas com prazo. Confiança do usuário no app comprometida.
+
+**Solução aplicada** (4 correções cirúrgicas em `flora.js`):
+
+1. **REGRA CRÍTICA — SOURCE OF TRUTH** adicionada após as REGRAS ABSOLUTAS do `blocoAgenda`:
+   - "A agenda estruturada acima é a ÚNICA fonte de verdade"
+   - "NUNCA invente, assuma ou transfira compromissos que não estão explicitamente listados"
+   - "O blocoRotina abaixo é CONTEXTO HISTÓRICO — NÃO é agenda atual"
+   - "Antes de afirmar qualquer compromisso, verifique: esse evento está listado na agenda com esse dia e horário?"
+
+2. **Reordenação dos blocos** no system prompt:
+   - Antes: `blocoGamificacao → blocoMemoria → blocoRotina → blocoAgenda → blocoContextoTemporal`
+   - Depois: `blocoGamificacao → blocoAgenda → blocoContextoTemporal → blocoMemoria → blocoRotina`
+   - Agenda estruturada agora tem precedência visual e contextual sobre memória narrativa.
+
+3. **Tarefas injetadas no blocoAgenda** por dia:
+   - `planoAtual?.tarefas` filtradas por `t.prazo === dataYMD && !t.concluida`
+   - Formato: `📝 Título da tarefa [TAREFA — blocoSugerido?]` abaixo dos compromissos do dia
+   - Flora agora vê tarefas e compromissos do mesmo dia no mesmo contexto
+
+4. **INICIO dos horários livres corrigido:** `INICIO = 6 * 60` → `INICIO = 1 * 60`
+   - Agora bate com o calendário visual (`HORA_INI = 1` em `RoutineView.jsx`)
+
+**Risco futuro:**
+- O `blocoRotina` ainda é injetado no prompt (após a agenda) como contexto de hábitos. Se a Flora tiver dificuldade para distinguir "hábito histórico" vs "compromisso atual" mesmo com a regra SOURCE OF TRUTH, considerar removê-lo ou reformulá-lo para tornar explícito que é referência, não agenda.
+- Tarefas sem prazo (`t.prazo = null`) continuam invisíveis na agenda — comportamento intencional (tarefas sem prazo não têm dia específico). Considerar injetar lista de tarefas sem prazo em bloco separado no futuro.
+
+---
