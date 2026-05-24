@@ -292,3 +292,38 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 **Solução:** Adicionados `bgSolido`, `bordaSolida`, `corTextoSolido` em `categorias.js`. `RoutineView.jsx` usa `style={{ background: cat.bgSolido, borderColor: cat.bordaSolida, color: cat.corTextoSolido }}`. Título: `text-[10px] font-semibold`. Hora: `text-[9px] opacity-80` (só visível quando evento tem altura >= 28px). Grid lines: `border-white/[0.08]` (era `[0.03]`).
 
 ---
+
+### [2026-05-24] DECISÃO — Aba Configurações via modal do perfil
+
+**Estrutura:** Não é uma nova aba na nav. Abre como `ModalConfiguracoes` (`client/src/components/ModalConfiguracoes.jsx`) via botão "Configurações" dentro do `ModalPerfil`.
+
+**Seções implementadas:**
+- Aparência: seletor Tema escuro/claro (estrutura funcional; light theme ainda sem estilos)
+- Notificações: 3 toggles (lembretes 30min, check-in 20h, streak 21h)
+- Flora: seletor Tom (calorosa | direta) — lido em `server/services/flora.js`
+- Privacidade: "Limpar memória da Flora" (com confirm) + "Exportar dados" (em breve, desabilitado)
+
+**Persistência:** Campo `configuracoes` (JSONB) da tabela `perfis` no Supabase. Sincronizado entre dispositivos via `carregarDadosUsuario`. Salvo via endpoint `/api/usuario/salvar-perfil`. `salvarPerfil` em `dadosUsuario.js` atualizado com o campo.
+
+**Estado no App.jsx:** `config` state com lazy init do localStorage. `salvarConfig` callback que atualiza state + perfil + Supabase. `useEffect` aplica `data-theme` attribute ao `document.documentElement`.
+
+**Tom da Flora:** `perfil.configuracoes.tomFlora` lido em `buildFloraPrompt` → injeta `blocoTomFlora` no system prompt ANTES das instruções de comportamento.
+
+**Risco futuro:** Light theme requer revisão completa de paleta — o `data-theme="claro"` existe como atributo mas sem CSS correspondente ainda.
+
+---
+
+### [2026-05-24] DECISÃO — Calendário mobile: spacing e hierarquia (v2)
+
+**Problema:** Calendário comprimido demais. Difícil distinguir dias e ler eventos.
+
+**Solução aplicada:**
+- `ALTURA_HORA`: 48px → 60px (20% mais espaço por hora, +240px altura total)
+- Cabeçalho dias: label `text-[11px]` + `letterSpacing: 0.05em`, número `text-lg font-bold`
+- Coluna horas: label `text-[10px]` (era `text-[10px]`), sufixo "h" em vez de ":00"
+- Separadores dias/horas: `border-white/[0.08]` (colunas e grid lines)
+- Eventos: `borderRadius: 6px`, padding `4px 6px`, título `text-xs font-semibold`, hora `text-[10px]` (visível quando altura >= 32px)
+
+**Nota:** `TOTAL_MIN` é calculado mas não usado — dead var, pode ser removido no futuro.
+
+---

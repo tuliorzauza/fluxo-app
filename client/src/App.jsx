@@ -15,6 +15,8 @@ import ScoreCompact    from './components/shared/ScoreCompact';
 import PontosAnimados  from './components/gamificacao/PontosAnimados';
 import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
+import ModalConfiguracoes from './components/ModalConfiguracoes';
+
 import { calcularScore, preservarEstadosTarefas } from './utils/planoUtils';
 import {
   processarEventoGamificacao,
@@ -248,7 +250,19 @@ export default function App() {
   const [celebracaoNivel, setCelebracaoNivel] = useState(null);
   const [mostrarTooltip,  setMostrarTooltip]  = useState(false);
   const [mostrarPerfil,   setMostrarPerfil]   = useState(false);
+  const [mostrarConfig,   setMostrarConfig]   = useState(false);
   const tooltipRef = useRef(null);
+
+  // ── Configurações do usuário ────────────────────────────────────────────────
+  const CONFIG_PADRAO = {
+    tema: 'escuro',
+    notificacoes: { lembretes: true, checkin: true, streak: true },
+    tomFlora: 'calorosa',
+  };
+  const [config, setConfig] = useState(() => {
+    const perfilLocal = ls_get(SK.perfil);
+    return perfilLocal?.configuracoes || CONFIG_PADRAO;
+  });
 
   // ── Supabase Auth — sessão e listener ──────────────────────────────────────
   const carregarDadosUsuarioRef = useRef(null);
@@ -886,6 +900,27 @@ export default function App() {
     window.location.reload();
   };
 
+  // ── Salvar configurações (Supabase + localStorage) ─────────────────────────
+  const salvarConfig = useCallback(async (novasConfig) => {
+    setConfig(novasConfig);
+    const perfilAtualizado = { ...(perfil || {}), configuracoes: novasConfig };
+    setPerfil(perfilAtualizado);
+    ls_set(SK.perfil, perfilAtualizado);
+    try {
+      await fetchComAuth(`${API_URL}/api/usuario/salvar-perfil`, {
+        method: 'POST',
+        body: JSON.stringify({ perfil: perfilAtualizado }),
+      });
+    } catch (err) {
+      console.error('[CONFIG] Erro ao salvar configurações:', err);
+    }
+  }, [perfil]);
+
+  // ── Aplicar tema ao root ─────────────────────────────────────────────────────
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', config.tema || 'escuro');
+  }, [config.tema]);
+
   // Fecha tooltip ao clicar fora
   useEffect(() => {
     if (!mostrarTooltip) return;
@@ -953,6 +988,10 @@ export default function App() {
         ls_set(SK.perfil, dados.perfil);
         setOnboardingFeito(true);
         ls_set(SK.onboarding, true);
+        // Aplica configurações sincronizadas entre dispositivos
+        if (dados.perfil.configuracoes) {
+          setConfig(dados.perfil.configuracoes);
+        }
       }
 
       // Plano — Supabase SEMPRE sobrescreve localStorage
@@ -1149,17 +1188,18 @@ export default function App() {
                     minWidth: '180px',
                   }}
                 >
-                  <p className="text-[11px] font-semibold text-amber-400 mb-1.5">Pendências de hoje</p>
+                  <p className="text-[11px] font-semibold text-amber-400 mb-1.5">Você ainda tem:</p>
                   {tarefasPendentesHoje > 0 && (
-                    <p className="text-xs text-zinc-400">
-                      📝 {tarefasPendentesHoje} tarefa{tarefasPendentesHoje > 1 ? 's' : ''} com prazo hoje
+                    <p className="text-xs text-zinc-300">
+                      📝 {tarefasPendentesHoje} tarefa{tarefasPendentesHoje > 1 ? 's' : ''}
                     </p>
                   )}
                   {compromissosHoje > 0 && (
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                      📅 {compromissosHoje} compromisso{compromissosHoje > 1 ? 's' : ''} hoje
+                    <p className="text-xs text-zinc-300 mt-0.5">
+                      📅 {compromissosHoje} compromisso{compromissosHoje > 1 ? 's' : ''}
                     </p>
                   )}
+                  <p className="text-[11px] text-zinc-500 mt-1">pendentes hoje</p>
                   <button
                     onClick={() => { setMostrarTooltip(false); setAba('plano'); }}
                     className="mt-2 text-[10px] font-semibold text-amber-500 hover:text-amber-400 transition-colors"
@@ -1354,6 +1394,27 @@ export default function App() {
           onFechar={() => setMostrarPerfil(false)}
           onResetar={resetarPerfil}
           onLogout={handleLogout}
+          onAbrirConfig={() => { setMostrarPerfil(false); setMostrarConfig(true); }}
+        />
+      )}
+
+      {/* ── Modal de configurações ───────────────────────────────────────── */}
+      {mostrarConfig && (
+        <ModalConfiguracoes
+          config={config}
+          onSalvar={salvarConfig}
+          onFechar={() => setMostrarConfig(false)}
+          onLimparMemoria={() => {
+            if (!window.confirm('Limpar toda a memória da Flora? Ela vai esquecer o que aprendeu sobre você.')) return;
+            const memoriaZerada = { gamificacao: memoria?.gamificacao || {} };
+            setMemoria(memoriaZerada);
+            ls_set(SK.memoria, memoriaZerada);
+            fetchComAuth(`${API_URL}/api/usuario/salvar-memoria`, {
+              method: 'POST',
+              body: JSON.stringify({ memoria: memoriaZerada }),
+            }).catch(() => {});
+            setMostrarConfig(false);
+          }}
         />
       )}
     </div>
@@ -1361,7 +1422,7 @@ export default function App() {
 }
 
 // ── Modal de perfil ──────────────────────────────────────────────────────────
-function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout }) {
+function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig }) {
   const nome      = perfil?.nome || 'Você';
   const email     = sessao?.user?.email || '';
   const inicial   = nome.charAt(0).toUpperCase();
@@ -1433,10 +1494,17 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
         </div>
 
         {/* Ações */}
-        <div className="px-4 py-3 space-y-1.5">
+        <div className="px-4 py-3 space-y-0.5">
+          <button
+            onClick={onAbrirConfig}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
+          >
+            <span className="text-base leading-none">⚙️</span>
+            Configurações
+          </button>
           <button
             onClick={onResetar}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-400 transition-colors hover:bg-white/5 text-left"
           >
             <UserCircle size={15} className="text-zinc-500 flex-shrink-0" />
             Editar perfil
@@ -1460,7 +1528,6 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
           {[
             { icon: '🧠', label: 'O que aprendi sobre você' },
             { icon: '📊', label: 'Resumo da semana' },
-            { icon: '📤', label: 'Exportar dados' },
           ].map(({ icon, label }) => (
             <div key={label} className="flex items-center gap-3 px-4 py-2.5 opacity-40">
               <span className="text-sm">{icon}</span>

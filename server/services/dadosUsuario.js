@@ -89,6 +89,7 @@ async function salvarPerfil(userId, perfil) {
     objetivos:                  perfil.objetivos                 || [],
     contador_interacoes:        perfil.contadorInteracoes        || 0,
     perguntas_profundas_feitas: perfil.perguntasProfundasFeitas  || [],
+    configuracoes:              perfil.configuracoes             || {},
   }, { onConflict: 'id' });
   console.log('[SAVE PERFIL] data:', data);
   console.log('[SAVE PERFIL] error:', JSON.stringify(error));

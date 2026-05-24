@@ -18,7 +18,7 @@ import {
 const HORA_INI   = 4;
 const HORA_FIM   = 24;
 const TOTAL_MIN  = (HORA_FIM - HORA_INI) * 60;
-const ALTURA_HORA  = 48;
+const ALTURA_HORA  = 60; // px por hora — aumentado para melhor legibilidade mobile
 const ALTURA_TOTAL = (HORA_FIM - HORA_INI) * ALTURA_HORA;
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -134,12 +134,13 @@ export default function RoutineView({
             const hojeKey = isHoje(d);
             return (
               <div key={i}
-                className={`text-center py-2 border-l border-white/5 ${hojeKey ? 'bg-amber-500/5' : ''}`}
+                className={`text-center py-2.5 border-l border-white/[0.08] ${hojeKey ? 'bg-amber-500/5' : ''}`}
               >
-                <p className={`text-[10px] uppercase tracking-wide font-medium ${hojeKey ? 'text-amber-500' : 'text-zinc-600'}`}>
+                <p className={`text-[11px] uppercase font-semibold ${hojeKey ? 'text-amber-500' : 'text-zinc-500'}`}
+                  style={{ letterSpacing: '0.05em' }}>
                   {DIAS_LABEL[i]}
                 </p>
-                <p className={`text-sm font-titulo font-semibold mt-0.5 ${hojeKey ? 'text-amber-400' : 'text-zinc-400'}`}>
+                <p className={`text-lg font-titulo font-bold mt-0.5 leading-none ${hojeKey ? 'text-amber-400' : 'text-zinc-300'}`}>
                   {d.getDate()}
                 </p>
               </div>
@@ -150,13 +151,13 @@ export default function RoutineView({
         {/* Corpo da grade */}
         <div className="grid grid-cols-[48px_repeat(7,1fr)] relative" style={{ height: ALTURA_TOTAL }}>
           {/* Coluna das horas */}
-          <div className="relative border-r border-white/5">
+          <div className="relative border-r border-white/[0.08]">
             {horas.map((h, i) => (
               <div key={h}
-                className="absolute right-2 text-[10px] text-zinc-600 font-mono"
-                style={{ top: i * ALTURA_HORA - 5 }}
+                className="absolute right-1.5 text-[10px] text-zinc-500 font-mono"
+                style={{ top: i * ALTURA_HORA - 6 }}
               >
-                {String(h).padStart(2, '0')}:00
+                {String(h).padStart(2, '0')}h
               </div>
             ))}
           </div>
@@ -169,7 +170,7 @@ export default function RoutineView({
 
             return (
               <div key={i}
-                className={`relative border-l border-white/5 ${hojeKey ? 'bg-amber-500/[0.02]' : ''}`}
+                className={`relative border-l border-white/[0.08] ${hojeKey ? 'bg-amber-500/[0.02]' : ''}`}
               >
                 {horas.map((_, idx) => (
                   <div key={idx}
@@ -197,10 +198,12 @@ export default function RoutineView({
                   return (
                     <button key={j}
                       onClick={() => setItemSel({ item: b.item, dia: d })}
-                      className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden text-left transition-all hover:brightness-125 hover:scale-[1.02] border"
+                      className="absolute left-[2px] right-[2px] overflow-hidden text-left transition-all hover:brightness-125 hover:scale-[1.02] border"
                       style={{
                         top: b.topo,
                         height: Math.max(20, b.altura),
+                        borderRadius: '6px',
+                        padding: '4px 6px',
                         background: cat.bgSolido,
                         borderColor: cat.bordaSolida,
                         color: cat.corTextoSolido,
@@ -210,10 +213,10 @@ export default function RoutineView({
                       <div className="flex items-start gap-0.5 leading-tight">
                         {recorrente && <Repeat size={7} className="opacity-60 flex-shrink-0 mt-0.5" />}
                         <div className="min-w-0 flex-1">
-                          {b.item.hora && b.altura >= 28 && (
-                            <p className="text-[9px] opacity-80 font-mono">{b.item.hora}</p>
+                          {b.item.hora && b.altura >= 32 && (
+                            <p className="text-[10px] opacity-80 font-mono leading-none mb-0.5">{b.item.hora}</p>
                           )}
-                          <p className="text-[10px] font-semibold truncate leading-tight">{b.item.titulo}</p>
+                          <p className="text-xs font-semibold truncate leading-tight">{b.item.titulo}</p>
                         </div>
                       </div>
                     </button>
