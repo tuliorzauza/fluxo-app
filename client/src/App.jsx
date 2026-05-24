@@ -246,6 +246,9 @@ export default function App() {
   // ── Gamificação UI ──────────────────────────────────────────────────────────
   const [animacoes,      setAnimacoes]      = useState([]);
   const [celebracaoNivel, setCelebracaoNivel] = useState(null);
+  const [mostrarTooltip,  setMostrarTooltip]  = useState(false);
+  const [mostrarPerfil,   setMostrarPerfil]   = useState(false);
+  const tooltipRef = useRef(null);
 
   // ── Supabase Auth — sessão e listener ──────────────────────────────────────
   const carregarDadosUsuarioRef = useRef(null);
@@ -883,6 +886,18 @@ export default function App() {
     window.location.reload();
   };
 
+  // Fecha tooltip ao clicar fora
+  useEffect(() => {
+    if (!mostrarTooltip) return;
+    const handler = (e) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(e.target)) {
+        setMostrarTooltip(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [mostrarTooltip]);
+
   // ── Logout ───────────────────────────────────────────────────────────────
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -1113,16 +1128,46 @@ export default function App() {
             </button>
           )}
           {plano && totalPendentesHoje > 0 && (
-            <div
-              title={`${totalPendentesHoje} pendência${totalPendentesHoje > 1 ? 's' : ''} hoje`}
-              className="flex items-center gap-1 px-2 py-1 rounded-full"
-              style={{
-                background: 'rgba(245,158,11,0.12)',
-                border: '1px solid rgba(245,158,11,0.3)',
-              }}
-            >
-              <span className="text-xs font-bold text-amber-500 font-titulo">{totalPendentesHoje}</span>
-              <span className="text-[10px] text-amber-500/70 hidden sm:inline">hoje</span>
+            <div className="relative" ref={tooltipRef}>
+              <button
+                onClick={() => setMostrarTooltip(v => !v)}
+                className="flex items-center gap-1 px-2 py-1 rounded-full transition-all active:scale-95"
+                style={{
+                  background: 'rgba(245,158,11,0.12)',
+                  border: '1px solid rgba(245,158,11,0.3)',
+                }}
+              >
+                <span className="text-xs font-bold text-amber-500 font-titulo">{totalPendentesHoje}</span>
+                <span className="text-[10px] text-amber-500/70 hidden sm:inline">hoje</span>
+              </button>
+              {mostrarTooltip && (
+                <div
+                  className="absolute right-0 top-full mt-2 z-50 rounded-xl py-2.5 px-3.5 shadow-xl"
+                  style={{
+                    background: '#1a1a24',
+                    border: '1px solid rgba(245,158,11,0.25)',
+                    minWidth: '180px',
+                  }}
+                >
+                  <p className="text-[11px] font-semibold text-amber-400 mb-1.5">Pendências de hoje</p>
+                  {tarefasPendentesHoje > 0 && (
+                    <p className="text-xs text-zinc-400">
+                      📝 {tarefasPendentesHoje} tarefa{tarefasPendentesHoje > 1 ? 's' : ''} com prazo hoje
+                    </p>
+                  )}
+                  {compromissosHoje > 0 && (
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      📅 {compromissosHoje} compromisso{compromissosHoje > 1 ? 's' : ''} hoje
+                    </p>
+                  )}
+                  <button
+                    onClick={() => { setMostrarTooltip(false); setAba('plano'); }}
+                    className="mt-2 text-[10px] font-semibold text-amber-500 hover:text-amber-400 transition-colors"
+                  >
+                    Ver plano →
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {notificacaoPermissao === 'default' && (
@@ -1150,13 +1195,9 @@ export default function App() {
             className="p-1.5 rounded-lg text-zinc-700 hover:text-zinc-400 transition-colors hover:bg-white/[0.04]">
             <Trash2 size={14} />
           </button>
-          <button onClick={resetarPerfil} title="Redefinir perfil"
+          <button onClick={() => setMostrarPerfil(true)} title="Meu perfil"
             className="p-1.5 rounded-lg text-zinc-700 hover:text-zinc-400 transition-colors hover:bg-white/[0.04]">
             <UserCircle size={16} />
-          </button>
-          <button onClick={handleLogout} title="Sair da conta"
-            className="p-1.5 rounded-lg text-zinc-700 hover:text-zinc-400 transition-colors hover:bg-white/[0.04]">
-            <LogOut size={14} />
           </button>
         </div>
       </header>
@@ -1303,6 +1344,133 @@ export default function App() {
       {celebracaoNivel && (
         <CelebracaoNivel info={celebracaoNivel} onContinuar={fecharCelebracao} />
       )}
+
+      {/* ── Modal de perfil ─────────────────────────────────────────────── */}
+      {mostrarPerfil && (
+        <ModalPerfil
+          perfil={perfil}
+          sessao={sessao}
+          gamificacao={gam}
+          onFechar={() => setMostrarPerfil(false)}
+          onResetar={resetarPerfil}
+          onLogout={handleLogout}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Modal de perfil ──────────────────────────────────────────────────────────
+function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout }) {
+  const nome      = perfil?.nome || 'Você';
+  const email     = sessao?.user?.email || '';
+  const inicial   = nome.charAt(0).toUpperCase();
+  const nivel     = gamificacao?.nivel || 1;
+  const pontos    = gamificacao?.pontos || 0;
+  const streak    = gamificacao?.streak || 0;
+
+  const NOMES_NIVEL = ['', 'Iniciante', 'Consistente', 'Focado', 'Produtivo', 'Mestre'];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
+      onClick={onFechar}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        style={{ background: '#15151e', border: '1px solid rgba(255,255,255,0.07)' }}
+      >
+        {/* Header com avatar */}
+        <div
+          className="px-5 pt-6 pb-5 flex items-center gap-4"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.25)' }}
+          >
+            <span className="text-xl font-bold text-amber-400 font-titulo">{inicial}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-titulo font-bold text-white text-base leading-tight truncate">{nome}</p>
+            {email && <p className="text-xs text-zinc-500 mt-0.5 truncate">{email}</p>}
+            <div className="flex items-center gap-2 mt-1.5">
+              <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)' }}
+              >
+                Nv.{nivel} · {NOMES_NIVEL[nivel] || 'Avançado'}
+              </span>
+              {streak >= 2 && (
+                <span className="text-[10px] text-zinc-400">🔥 {streak} dias</span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onFechar}
+            className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div
+          className="grid grid-cols-3 divide-x divide-white/[0.05] px-0"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          {[
+            { label: 'Pontos', valor: pontos },
+            { label: 'Nível',  valor: nivel },
+            { label: 'Streak', valor: `${streak}d` },
+          ].map(({ label, valor }) => (
+            <div key={label} className="py-3 flex flex-col items-center">
+              <span className="font-titulo font-bold text-base text-white">{valor}</span>
+              <span className="text-[10px] text-zinc-600 mt-0.5">{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Ações */}
+        <div className="px-4 py-3 space-y-1.5">
+          <button
+            onClick={onResetar}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
+          >
+            <UserCircle size={15} className="text-zinc-500 flex-shrink-0" />
+            Editar perfil
+            <span className="ml-auto text-xs text-zinc-600">Refazer onboarding</span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-red-400 transition-colors hover:bg-red-500/8 text-left"
+          >
+            <LogOut size={15} className="flex-shrink-0" />
+            Sair da conta
+          </button>
+        </div>
+
+        {/* Em breve */}
+        <div
+          className="mx-4 mb-4 rounded-xl overflow-hidden"
+          style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-4 pt-3 pb-2">Em breve</p>
+          {[
+            { icon: '🧠', label: 'O que aprendi sobre você' },
+            { icon: '📊', label: 'Resumo da semana' },
+            { icon: '📤', label: 'Exportar dados' },
+          ].map(({ icon, label }) => (
+            <div key={label} className="flex items-center gap-3 px-4 py-2.5 opacity-40">
+              <span className="text-sm">{icon}</span>
+              <span className="text-xs text-zinc-500">{label}</span>
+              <span className="ml-auto text-[10px] text-zinc-700">em breve</span>
+            </div>
+          ))}
+          <div className="h-2" />
+        </div>
+      </div>
     </div>
   );
 }

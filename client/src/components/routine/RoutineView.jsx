@@ -173,7 +173,7 @@ export default function RoutineView({
               >
                 {horas.map((_, idx) => (
                   <div key={idx}
-                    className="absolute left-0 right-0 border-t border-white/[0.03]"
+                    className="absolute left-0 right-0 border-t border-white/[0.08]"
                     style={{ top: idx * ALTURA_HORA }}
                   />
                 ))}
@@ -197,15 +197,23 @@ export default function RoutineView({
                   return (
                     <button key={j}
                       onClick={() => setItemSel({ item: b.item, dia: d })}
-                      className={`absolute left-0.5 right-0.5 rounded-md border px-1.5 py-1 overflow-hidden text-left transition-all hover:brightness-110 hover:scale-[1.02] ${cat.corBg} ${cat.corBorda} ${cat.corTexto}`}
-                      style={{ top: b.topo, height: b.altura }}
+                      className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden text-left transition-all hover:brightness-125 hover:scale-[1.02] border"
+                      style={{
+                        top: b.topo,
+                        height: Math.max(20, b.altura),
+                        background: cat.bgSolido,
+                        borderColor: cat.bordaSolida,
+                        color: cat.corTextoSolido,
+                      }}
                       title={b.item.titulo}
                     >
                       <div className="flex items-start gap-0.5 leading-tight">
-                        {recorrente && <Repeat size={7} className="opacity-50 flex-shrink-0 mt-0.5" />}
+                        {recorrente && <Repeat size={7} className="opacity-60 flex-shrink-0 mt-0.5" />}
                         <div className="min-w-0 flex-1">
-                          {b.item.hora && <p className="text-[8px] opacity-60 font-mono">{b.item.hora}</p>}
-                          <p className="text-[9px] font-medium truncate">{b.item.titulo}</p>
+                          {b.item.hora && b.altura >= 28 && (
+                            <p className="text-[9px] opacity-80 font-mono">{b.item.hora}</p>
+                          )}
+                          <p className="text-[10px] font-semibold truncate leading-tight">{b.item.titulo}</p>
                         </div>
                       </div>
                     </button>

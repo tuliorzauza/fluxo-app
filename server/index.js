@@ -443,8 +443,97 @@ app.post('/api/usuario/salvar-perfil', autenticarUsuario, async (req, res) => {
   }
 });
 
+// ── Métricas reais da semana a partir dos compromissos ───────────────────────
+function calcularMetricasSemana(compromissos) {
+  const JANELA_INI  = 8  * 60; // 08h = 480 min
+  const JANELA_FIM  = 22 * 60; // 22h = 1320 min
+  const JANELA_DIA  = JANELA_FIM - JANELA_INI; // 840 min
+  const NOITE_INI   = 18 * 60; // 18h
+  const NOITE_FIM   = 22 * 60; // 22h
+  const DIAS        = 7;
+
+  // Blocos por dia (0=Dom..6=Sáb)
+  const porDiaNum = Array.from({ length: DIAS }, () => []);
+
+  (compromissos || []).forEach(c => {
+    if (!c.hora) return;
+    const [h, m] = c.hora.split(':').map(Number);
+    const ini = h * 60 + m;
+    let dur = 60;
+    if (c.horaFim) {
+      const [hf, mf] = c.horaFim.split(':').map(Number);
+      const d = (hf * 60 + mf) - ini;
+      if (d > 0) dur = d;
+    } else if (c.duracao) {
+      dur = c.duracao;
+    }
+    const fim = ini + dur;
+
+    const add = (d) => {
+      const iniClamp = Math.max(ini, JANELA_INI);
+      const fimClamp = Math.min(fim, JANELA_FIM);
+      if (fimClamp > iniClamp) porDiaNum[d].push({ ini: iniClamp, fim: fimClamp });
+    };
+
+    if (c.recorrencia?.tipo === 'diaria') {
+      for (let d = 0; d < DIAS; d++) add(d);
+    } else if (c.recorrencia?.tipo === 'semanal' && Array.isArray(c.recorrencia.diasSemana)) {
+      c.recorrencia.diasSemana.forEach(d => add(d));
+    } else if (c.data) {
+      const dia = new Date(c.data + 'T12:00:00').getDay();
+      add(dia);
+    }
+  });
+
+  let totalOcupado    = 0;
+  let noitesLivres    = 0;
+  let blocosLongos    = 0;
+  let diasFragmentados = 0;
+
+  for (let d = 0; d < DIAS; d++) {
+    // Ordena e mescla intervalos sobrepostos
+    const merged = [];
+    porDiaNum[d].sort((a, b) => a.ini - b.ini).forEach(iv => {
+      if (!merged.length || iv.ini > merged[merged.length - 1].fim) {
+        merged.push({ ...iv });
+      } else {
+        merged[merged.length - 1].fim = Math.max(merged[merged.length - 1].fim, iv.fim);
+      }
+    });
+
+    const ocupadoDia = merged.reduce((s, iv) => s + (iv.fim - iv.ini), 0);
+    totalOcupado += ocupadoDia;
+
+    // Noite livre: < 30 min de compromissos entre 18h-22h
+    const noiteOcupada = merged
+      .filter(iv => iv.fim > NOITE_INI && iv.ini < NOITE_FIM)
+      .reduce((s, iv) => s + (Math.min(iv.fim, NOITE_FIM) - Math.max(iv.ini, NOITE_INI)), 0);
+    if (noiteOcupada < 30) noitesLivres++;
+
+    // Intervalos livres
+    const livres = [];
+    let prev = JANELA_INI;
+    merged.forEach(iv => {
+      if (iv.ini > prev) livres.push(iv.ini - prev);
+      prev = Math.max(prev, iv.fim);
+    });
+    if (prev < JANELA_FIM) livres.push(JANELA_FIM - prev);
+
+    // Blocos livres >= 2h
+    blocosLongos += livres.filter(b => b >= 120).length;
+
+    // Dia fragmentado: 3+ lacunas curtas (< 90 min)
+    if (livres.filter(b => b > 0 && b < 90).length >= 3) diasFragmentados++;
+  }
+
+  const percentualLivre = Math.round(((JANELA_DIA * DIAS - totalOcupado) / (JANELA_DIA * DIAS)) * 100);
+  const horasLivres     = Math.round((JANELA_DIA * DIAS - totalOcupado) / 60);
+
+  return { horasLivres, noitesLivres, diasFragmentados, blocosLongos, percentualLivre };
+}
+
 // ── Estado da Semana — análise em linguagem natural via Claude ────────────────
-app.post('/api/estado-semana', autenticarUsuario, async (req, res) => {
+app.post('/api/estado-semana', async (req, res) => {
   const { planoAtual, scoreDiscreto = 0, rotina = null } = req.body;
 
   // Sem plano: resposta neutra
@@ -507,6 +596,16 @@ app.post('/api/estado-semana', autenticarUsuario, async (req, res) => {
   const comprometidas = rotina?.comprometida || [];
   const ritmoAceito   = rotina?.ritmoAceito  || null;
 
+  // Calcula métricas reais de tempo
+  const metricas = calcularMetricasSemana(planoAtual.compromissos || []);
+  const blocoMetricas = `
+Métricas calculadas da semana:
+- Horas livres (8h-22h): ${metricas.horasLivres}h de ${7 * 14}h disponíveis (${metricas.percentualLivre}% livre)
+- Noites livres (18h-22h com < 30 min de compromissos): ${metricas.noitesLivres}/7
+- Blocos de 2h+ consecutivos livres: ${metricas.blocosLongos}
+- Dias com agenda fragmentada (3+ lacunas curtas): ${metricas.diasFragmentados}/7
+`;
+
   const blocoRotinaPrompt = comprometidas.length > 0 || ritmoAceito ? `
 Contexto do usuário:
 ${comprometidas.length > 0 ? `- Atividades INEGOCIÁVEIS (não criticar): ${comprometidas.join(', ')}` : ''}
@@ -545,7 +644,7 @@ Atividades inegociáveis listadas acima NÃO devem ser criticadas na descrição
       system: systemPrompt,
       messages: [{
         role: 'user',
-        content: `Agenda organizada por dia da semana:\n${JSON.stringify(porDia, null, 2)}\n\nTarefas: ${JSON.stringify(tarefas)}\nScore base: ${scoreDiscreto}\n\nREGRA CRÍTICA: Conflito de horário APENAS entre atividades listadas no MESMO DIA. Atividades em dias diferentes com horário similar NÃO são conflito. Analise cada dia separadamente.`,
+        content: `${blocoMetricas}\nAgenda organizada por dia da semana:\n${JSON.stringify(porDia, null, 2)}\n\nTarefas: ${JSON.stringify(tarefas)}\nScore base: ${scoreDiscreto}\n\nREGRA CRÍTICA: Conflito de horário APENAS entre atividades listadas no MESMO DIA. Atividades em dias diferentes com horário similar NÃO são conflito. Analise cada dia separadamente. Use as métricas calculadas acima como base objetiva para a análise — elas refletem o tempo real disponível.`,
       }],
     });
 

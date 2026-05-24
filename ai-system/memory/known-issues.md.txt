@@ -251,3 +251,44 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 - O histórico de display não é salvo no Supabase (só o histórico da API). Conversas anteriores não aparecem em novos dispositivos — comportamento aceitável por ora.
 
 ---
+
+### [2026-05-24] BUG-008 — EstadoSemana: análise da IA nunca rodava (401 silencioso)
+
+**Sintoma:** Card "Estado da semana" sempre mostrava fallback baseado em score (ex: "Fluindo bem", "Semana moderada") — nunca uma análise personalizada da IA. Sem erro visível para o usuário.
+
+**Causa raiz:** `EstadoSemana.jsx` linha 102 chamava `fetch('/api/estado-semana')` com `fetch` puro, sem header `Authorization`. O endpoint tinha `autenticarUsuario` middleware → retornava 401. O `.catch()` no componente swallava o erro silenciosamente (`setLoading(false)` sem definir `estado`). Como `estado` continuava `null`, o componente usava `getFallback(scoreDiscreto)` para sempre.
+
+**Impacto:** 100% dos usuários nunca viram uma análise real da IA. Feature de análise de semana estava completamente quebrada desde a implementação.
+
+**Solução aplicada:**
+1. Removido `autenticarUsuario` do endpoint `POST /api/estado-semana` — o endpoint só lê dados do `req.body`, não acessa o banco. Não precisa de autenticação.
+2. Adicionada função `calcularMetricasSemana(compromissos)` no servidor: computa métricas reais (horas livres, noites livres, dias fragmentados, blocos 2h+ consecutivos, percentual livre) a partir dos compromissos.
+3. Métricas injetadas no prompt do Claude Haiku como contexto objetivo — evita que a IA analise apenas texto, agora tem números reais.
+
+**Risco futuro:** Sem autenticação, o endpoint pode ser abusado (requests anônimos que consomem tokens da API Anthropic). Considerar rate limiting por IP se necessário.
+
+---
+
+### [2026-05-24] DECISÃO — Tooltip no contador de pendências
+
+**Problema:** Badge âmbar de pendências era um `<div>` não interativo com apenas `title` como tooltip (não funciona em mobile).
+
+**Solução:** Convertido para `<button>` com popover React. Click abre painel mostrando breakdown (tarefas vs compromissos). Click fora fecha. Botão "Ver plano →" navega para aba Plano.
+
+---
+
+### [2026-05-24] DECISÃO — Modal de perfil substituiu botão UserCircle direto
+
+**Problema:** Botão UserCircle chamava `resetarPerfil` direto via `window.confirm` — agressivo e sem informações.
+
+**Solução:** Botão abre `ModalPerfil` com avatar, nome, email, nível, pontos, streak. Opções: "Editar perfil" (refaz onboarding), "Sair da conta" (logout). Seção "Em breve" (desabilitada): "O que aprendi sobre você", "Resumo da semana", "Exportar dados". Logout movido exclusivamente para dentro do modal.
+
+---
+
+### [2026-05-24] DECISÃO — Calendário mobile: cores sólidas e texto maior
+
+**Problema:** Eventos no calendário usavam opacidade 15% (`bg-red-500/15`) — quase invisíveis no mobile. Texto em `text-[9px]` — ilegível.
+
+**Solução:** Adicionados `bgSolido`, `bordaSolida`, `corTextoSolido` em `categorias.js`. `RoutineView.jsx` usa `style={{ background: cat.bgSolido, borderColor: cat.bordaSolida, color: cat.corTextoSolido }}`. Título: `text-[10px] font-semibold`. Hora: `text-[9px] opacity-80` (só visível quando evento tem altura >= 28px). Grid lines: `border-white/[0.08]` (era `[0.03]`).
+
+---
