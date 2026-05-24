@@ -1,7 +1,7 @@
 /**
  * RoutineView.jsx — Visualização tipo Google Agenda
  *
- * Grid horário (4h–23h) × 7 dias da semana.
+ * Grid horário (1h–23h) × 7 dias da semana.
  * Cada item ocupa um bloco vertical proporcional à sua duração.
  * Inclui modal completo de adição de compromissos.
  */
@@ -15,10 +15,10 @@ import {
   horaParaMinutos, duracaoMinutos,
 } from '../../utils/calendarUtils';
 
-const HORA_INI   = 4;
-const HORA_FIM   = 24;
+const HORA_INI   = 1;  // timeline começa em 1h
+const HORA_FIM   = 23; // timeline termina em 23h
 const TOTAL_MIN  = (HORA_FIM - HORA_INI) * 60;
-const ALTURA_HORA  = 60; // px por hora — aumentado para melhor legibilidade mobile
+const ALTURA_HORA  = 60; // px por hora
 const ALTURA_TOTAL = (HORA_FIM - HORA_INI) * ALTURA_HORA;
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
