@@ -429,8 +429,11 @@ export default function App() {
     setCarregando(true);
     setErro(null);
 
-    const msgUser = { tipo: 'user', texto: input, timestamp: new Date().toISOString() };
-    const novasMensagens = [...mensagens, msgUser];
+    // Mensagens de sistema (tags internas) não aparecem como balão do usuário
+    const ehMensagemSistema = /^\[(RITUAL_FECHAMENTO|ROTINA_RETORNO|Sistema|MODO_CAOS)\]/.test(input);
+    const novasMensagens = ehMensagemSistema
+      ? [...mensagens]
+      : [...mensagens, { tipo: 'user', texto: input, timestamp: new Date().toISOString() }];
 
     // Placeholder da Flora durante streaming
     const ts = new Date().toISOString();
@@ -583,12 +586,25 @@ export default function App() {
   }, [mensagens, histApi, perfil, plano, memoria, adicionarAnimacao, verificarLevelUp]);
 
   // ── Ritual de Fechamento — check-in noturno automático (20h-23h) ────────
-  const checkinDisparadoRef = useRef(false);
-  const enviarMensagemRef   = useRef(enviarMensagem);
+  // Flag persistida no localStorage para sobreviver a reloads de página
+  function jaDisparouCheckinHoje() {
+    const hoje = new Date().toISOString().split('T')[0];
+    return localStorage.getItem(`fluxo_checkin_disparado_${hoje}`) === 'true';
+  }
+  function marcarCheckinDisparadoHoje() {
+    const hoje = new Date().toISOString().split('T')[0];
+    localStorage.setItem(`fluxo_checkin_disparado_${hoje}`, 'true');
+    // Remove flags de dias anteriores para não acumular lixo no localStorage
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('fluxo_checkin_disparado_') && !k.endsWith(hoje))
+      .forEach(k => localStorage.removeItem(k));
+  }
+
+  const enviarMensagemRef = useRef(enviarMensagem);
   useEffect(() => { enviarMensagemRef.current = enviarMensagem; }, [enviarMensagem]);
 
   useEffect(() => {
-    if (!onboardingFeito || checkinDisparadoRef.current) return;
+    if (!onboardingFeito) return;
     const hora = new Date().getHours();
     if (hora < 20 || hora >= 23) return;
 
@@ -596,8 +612,9 @@ export default function App() {
     const checkIns = memoria?.checkIns || [];
     const jaFezHoje = checkIns.some(c => c.data === hoje);
     if (jaFezHoje) return;
+    if (jaDisparouCheckinHoje()) return;
 
-    checkinDisparadoRef.current = true;
+    marcarCheckinDisparadoHoje();
     const t = setTimeout(() => {
       enviarMensagemRef.current('[RITUAL_FECHAMENTO] Hora de fechar o dia. Como foi?');
     }, 1200);
@@ -826,6 +843,19 @@ export default function App() {
     }
   }, [memoria, perfil, adicionarAnimacao]);
 
+  // ── Salvar plano no Supabase (fire-and-forget) ─────────────────────────
+  const salvarPlanoNoSupabase = useCallback(async (novoPlano) => {
+    try {
+      await fetchComAuth(`${API_URL}/api/usuario/salvar-plano`, {
+        method: 'POST',
+        body: JSON.stringify({ plano: novoPlano }),
+      });
+    } catch (err) {
+      console.error('[SAVE] Erro ao salvar plano manualmente:', err);
+      // Não bloquear UI — localStorage já foi atualizado
+    }
+  }, []);
+
   // ── Editar item do calendário ───────────────────────────────────────────
   const editarItem = useCallback((id, changes, tipo) => {
     if (!plano) return;
@@ -837,7 +867,8 @@ export default function App() {
     }
     setPlano(novo);
     ls_set(SK.plano, novo);
-  }, [plano]);
+    salvarPlanoNoSupabase(novo);
+  }, [plano, salvarPlanoNoSupabase]);
 
   // ── Deletar item do calendário ──────────────────────────────────────────
   const deletarItem = useCallback((id, tipo) => {
@@ -850,7 +881,8 @@ export default function App() {
     }
     setPlano(novo);
     ls_set(SK.plano, novo);
-  }, [plano]);
+    salvarPlanoNoSupabase(novo);
+  }, [plano, salvarPlanoNoSupabase]);
 
   // ── Adicionar compromisso direto pelo calendário ────────────────────────
   const adicionarCompromisso = useCallback((compromisso) => {
@@ -861,7 +893,8 @@ export default function App() {
     };
     setPlano(novo);
     ls_set(SK.plano, novo);
-  }, [plano]);
+    salvarPlanoNoSupabase(novo);
+  }, [plano, salvarPlanoNoSupabase]);
 
   // ── Fechar celebração de nível (e mandar mensagem da Flora no chat) ─────
   const fecharCelebracao = useCallback(() => {

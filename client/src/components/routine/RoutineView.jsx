@@ -264,11 +264,22 @@ export default function RoutineView({
 }
 
 // ─── Modal de detalhes/edição ────────────────────────────────────────────────
+function _calcularHoraFim(hora, duracao) {
+  if (!hora || !duracao) return '';
+  const [h, m] = hora.split(':').map(Number);
+  const totalMin = h * 60 + m + Number(duracao);
+  const hf = Math.floor(totalMin / 60).toString().padStart(2, '0');
+  const mf = (totalMin % 60).toString().padStart(2, '0');
+  return `${hf}:${mf}`;
+}
+
 function ModalItem({ item, dia, onFechar, onEditar, onApagar }) {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState({
     titulo:    item.titulo,
     hora:      item.hora || '',
+    horaFim:   _calcularHoraFim(item.hora, item.duracao),
+    duracao:   item.duracao || 60,
     categoria: item.categoria || 'compromisso',
   });
   const cat = getCategoria(item);
@@ -325,11 +336,45 @@ function ModalItem({ item, dia, onFechar, onEditar, onApagar }) {
               value={form.titulo}
               onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
             />
-            <input type="time"
-              className="w-full bg-[#0f0f13] border border-white/10 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-2 focus:outline-none focus:border-amber-500/40"
-              value={form.hora}
-              onChange={e => setForm(f => ({ ...f, hora: e.target.value }))}
-            />
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <p className="text-[10px] text-zinc-500 mb-1 font-titulo uppercase tracking-wide">Início</p>
+                <input type="time"
+                  className="w-full bg-[#0f0f13] border border-white/10 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-amber-500/40"
+                  value={form.hora}
+                  style={{ colorScheme: 'dark' }}
+                  onChange={e => {
+                    const novaHora = e.target.value;
+                    setForm(f => ({
+                      ...f,
+                      hora: novaHora,
+                      horaFim: _calcularHoraFim(novaHora, f.duracao),
+                    }));
+                  }}
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-500 mb-1 font-titulo uppercase tracking-wide">Fim</p>
+                <input type="time"
+                  className="w-full bg-[#0f0f13] border border-white/10 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-amber-500/40"
+                  value={form.horaFim}
+                  style={{ colorScheme: 'dark' }}
+                  onChange={e => {
+                    const novaHoraFim = e.target.value;
+                    setForm(f => {
+                      let duracao = f.duracao;
+                      if (f.hora && novaHoraFim) {
+                        const [h, m] = f.hora.split(':').map(Number);
+                        const [hf, mf] = novaHoraFim.split(':').map(Number);
+                        const diff = (hf * 60 + mf) - (h * 60 + m);
+                        if (diff > 0) duracao = diff;
+                      }
+                      return { ...f, horaFim: novaHoraFim, duracao };
+                    });
+                  }}
+                />
+              </div>
+            </div>
             <select
               className="w-full bg-[#0f0f13] border border-white/10 rounded-lg px-3 py-2 text-sm text-zinc-300 mb-3 focus:outline-none focus:border-amber-500/40"
               value={form.categoria}
@@ -340,7 +385,7 @@ function ModalItem({ item, dia, onFechar, onEditar, onApagar }) {
               ))}
             </select>
             <div className="flex gap-2">
-              <button onClick={() => onEditar(form)}
+              <button onClick={() => onEditar({ titulo: form.titulo, hora: form.hora, duracao: form.duracao, categoria: form.categoria })}
                 className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold transition-colors">
                 Salvar
               </button>

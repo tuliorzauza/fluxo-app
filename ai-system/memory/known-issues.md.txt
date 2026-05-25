@@ -370,3 +370,63 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 - Tarefas sem prazo (`t.prazo = null`) continuam invisíveis na agenda — comportamento intencional (tarefas sem prazo não têm dia específico). Considerar injetar lista de tarefas sem prazo em bloco separado no futuro.
 
 ---
+
+### [2026-05-24] BUG-010 — Compromissos adicionados/editados/deletados manualmente não persistiam no Supabase
+
+**Sintoma:** Usuário adiciona, edita ou deleta compromisso diretamente pelo calendário. Ao reabrir o app ou logar em outro dispositivo, a alteração some.
+
+**Causa raiz:** `adicionarCompromisso`, `editarItem` e `deletarItem` em `App.jsx` apenas faziam `setPlano + ls_set` — sem chamar nenhum endpoint. O endpoint `/api/usuario/salvar-plano` existia mas nunca era chamado por essas funções. Na próxima sessão, `carregarDadosUsuario` sobrescrevia o localStorage com o Supabase (que não tinha as mudanças manuais).
+
+**Impacto:** Toda alteração manual no calendário (não feita via Flora) era perdida cross-device ou após reload com sessão nova.
+
+**Solução aplicada:**
+1. Nova função `salvarPlanoNoSupabase(novoPlano)` em `App.jsx` — fire-and-forget, não bloqueia UI.
+2. `adicionarCompromisso`, `editarItem` e `deletarItem` agora chamam `salvarPlanoNoSupabase(novo)` após `ls_set`.
+3. Endpoint `/api/usuario/salvar-plano` já existia em `server/index.js` — nenhuma alteração no backend necessária.
+
+**Risco futuro:** Se o usuário fizer várias edições rápidas em sequência (ex: editar 5 compromissos em 2 segundos), serão disparadas 5 requisições paralelas ao Supabase. Por ser upsert, a última wins — sem risco de corrupção, mas pode gerar carga desnecessária. Considerar debounce futuramente.
+
+---
+
+### [2026-05-24] BUG-011 — Flora presumia duração de compromissos sem perguntar
+
+**Sintoma:** Usuário diz "reunião às 14h" e a Flora cria o compromisso com `duracao: 60` automaticamente, sem confirmar horário de término.
+
+**Causa raiz:** Nenhuma regra no system prompt proibia a Flora de assumir duração padrão. O formato JSON de resposta tem `duracao` como campo obrigatório, levando a Flora a preencher com 60 min por padrão.
+
+**Solução aplicada:** Adicionado bloco `REGRA DE DURAÇÃO DE COMPROMISSOS — OBRIGATÓRIA` em `flora.js` antes da seção RACIOCÍNIO CONTEXTUAL. A regra obriga a Flora a perguntar "Até que horas vai durar?" ou "Quanto tempo vai levar?" antes de criar qualquer compromisso sem duração explícita. Exceções: compromisso com horário inicial E final informados, ou tipo com duração universalmente conhecida E contexto inequívoco.
+
+---
+
+### [2026-05-24] BUG-012 — Modal de edição de compromisso sem campo de horário final
+
+**Sintoma:** Ao editar um compromisso no calendário (RoutineView), o modal de edição só mostrava título, horário de início e categoria. Não havia campo para horário final ou duração.
+
+**Causa raiz:** `ModalItem` em `RoutineView.jsx` tinha form state apenas com `{ titulo, hora, categoria }`. O `ModalAdicionar` (para criar novos) já tinha os campos Início/Fim, mas o modal de edição estava incompleto.
+
+**Solução aplicada:**
+1. Função auxiliar `_calcularHoraFim(hora, duracao)` adicionada antes de `ModalItem`.
+2. Form state expandido com `horaFim` (calculada de `item.hora + item.duracao`) e `duracao`.
+3. UI de edição substituiu o campo único de horário por grid 2 colunas (Início / Fim).
+4. Ao editar `hora`, `horaFim` é recalculada mantendo a mesma duração.
+5. Ao editar `horaFim`, `duracao` é recalculada automaticamente.
+6. `onEditar` passa `{ titulo, hora, duracao, categoria }` — sem `horaFim` (campo derivado, não armazenado).
+
+---
+
+### [2026-05-24] BUG-013 — Ritual de fechamento disparava duplicado e tag vazava para o usuário
+
+**Sintoma A:** Tag `[RITUAL_FECHAMENTO]` aparecia como balão do usuário no chat (texto literal com o tag).
+**Sintoma B:** Ao recarregar a página entre 20h e 23h sem completar o check-in, o ritual disparava novamente.
+
+**Causa raiz A:** `enviarMensagem` adicionava `msgUser = { texto: input }` ao chat sem filtrar mensagens de sistema. A tag virava um balão visível para o usuário.
+
+**Causa raiz B:** `checkinDisparadoRef = useRef(false)` era memória volátil da sessão React — resetava a cada reload. Sem persistência, a única proteção era `memoria.checkIns` (que só é populada após o check-in ser concluído). Se o usuário não completava o ritual, o dispatch ocorria novamente na próxima sessão.
+
+**Solução aplicada:**
+1. **Filtro de sistema:** `ehMensagemSistema = /^\[(RITUAL_FECHAMENTO|ROTINA_RETORNO|Sistema|MODO_CAOS)\]/.test(input)` — se verdadeiro, `novasMensagens` não inclui o balão do usuário. Cobre todos os 4 tipos de mensagem interna.
+2. **Flag persistida:** Substituído `checkinDisparadoRef` por funções `jaDisparouCheckinHoje()` e `marcarCheckinDisparadoHoje()` que usam `localStorage.setItem('fluxo_checkin_disparado_YYYY-MM-DD', 'true')`. A flag sobrevive a reloads. `marcarCheckinDisparadoHoje` também limpa flags de dias anteriores automaticamente.
+
+**Risco futuro:** Mensagens `[MODO_CAOS]` agora também são ocultas da UI — o usuário vê apenas a resposta da Flora, sem o trigger de sistema. Isso é comportamento correto, mas se alguma mensagem de sistema precisar de feedback visual no futuro, a regex precisará ser revisitada.
+
+---
