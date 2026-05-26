@@ -111,44 +111,50 @@ function enviarNotificacao(titulo, corpo, opcoes = {}) {
 
 const notificacoesEnviadas = new Set();
 
-function verificarNotificacoes(planoAtual, memoriaAtual) {
+function verificarNotificacoes(planoAtual, memoriaAtual, configAtual) {
   if (Notification.permission !== 'granted') return;
   const agora    = new Date();
   const hora     = agora.getHours() * 60 + agora.getMinutes();
   const hojeStr  = agora.toISOString().split('T')[0];
 
-  // Lembrete 30min antes de compromissos de hoje
-  (planoAtual?.compromissos || []).forEach(comp => {
-    if (!comp.hora || comp.concluida) return;
-    if (comp.data && comp.data !== hojeStr) return;
-    const [h, m] = comp.hora.split(':').map(Number);
-    const diff   = (h * 60 + m) - hora;
-    if (diff >= 28 && diff <= 32) {
-      const tag = `lembrete-30min-${comp.id}`;
+  // Lembrete 30min antes de compromissos de hoje — só se toggle ativado
+  if (configAtual?.notificacoes?.lembretes !== false) {
+    (planoAtual?.compromissos || []).forEach(comp => {
+      if (!comp.hora || comp.concluida) return;
+      if (comp.data && comp.data !== hojeStr) return;
+      const [h, m] = comp.hora.split(':').map(Number);
+      const diff   = (h * 60 + m) - hora;
+      if (diff >= 28 && diff <= 32) {
+        const tag = `lembrete-30min-${comp.id}`;
+        if (!notificacoesEnviadas.has(tag)) {
+          notificacoesEnviadas.add(tag);
+          enviarNotificacao(`Em 30 minutos: ${comp.titulo}`, `Prepare-se para ${comp.titulo} às ${comp.hora}`, { tag });
+        }
+      }
+    });
+  }
+
+  // Streak em risco às 21h — só se toggle ativado
+  if (configAtual?.notificacoes?.streak !== false) {
+    const streak = memoriaAtual?.gamificacao?.streak || 0;
+    if (agora.getHours() === 21 && agora.getMinutes() < 5 && streak > 0) {
+      const tag = `streak-risco-${hojeStr}`;
       if (!notificacoesEnviadas.has(tag)) {
         notificacoesEnviadas.add(tag);
-        enviarNotificacao(`Em 30 minutos: ${comp.titulo}`, `Prepare-se para ${comp.titulo} às ${comp.hora}`, { tag });
+        enviarNotificacao('Seu streak tá em risco 🔥', `${streak} dia${streak > 1 ? 's' : ''} de sequência. Não deixa escapar hoje.`, { tag });
       }
-    }
-  });
-
-  // Streak em risco às 21h
-  const streak = memoriaAtual?.gamificacao?.streak || 0;
-  if (agora.getHours() === 21 && agora.getMinutes() < 5 && streak > 0) {
-    const tag = `streak-risco-${hojeStr}`;
-    if (!notificacoesEnviadas.has(tag)) {
-      notificacoesEnviadas.add(tag);
-      enviarNotificacao('Seu streak tá em risco 🔥', `${streak} dia${streak > 1 ? 's' : ''} de sequência. Não deixa escapar hoje.`, { tag });
     }
   }
 
-  // Check-in noturno às 20h
-  if (agora.getHours() === 20 && agora.getMinutes() < 5) {
-    const tag = `checkin-${hojeStr}`;
-    const jaFez = (memoriaAtual?.checkIns || []).some(c => c.data === hojeStr);
-    if (!notificacoesEnviadas.has(tag) && !jaFez) {
-      notificacoesEnviadas.add(tag);
-      enviarNotificacao('Como foi seu dia? 🌙', 'A Flora quer saber. Leva só 2 minutos.', { tag });
+  // Check-in noturno às 20h — só se toggle ativado
+  if (configAtual?.notificacoes?.checkin !== false) {
+    if (agora.getHours() === 20 && agora.getMinutes() < 5) {
+      const tag = `checkin-${hojeStr}`;
+      const jaFez = (memoriaAtual?.checkIns || []).some(c => c.data === hojeStr);
+      if (!notificacoesEnviadas.has(tag) && !jaFez) {
+        notificacoesEnviadas.add(tag);
+        enviarNotificacao('Como foi seu dia? 🌙', 'A Flora quer saber. Leva só 2 minutos.', { tag });
+      }
     }
   }
 }
@@ -328,10 +334,10 @@ export default function App() {
   useEffect(() => {
     if (Notification.permission !== 'granted') return;
     if (!plano && !memoria) return;
-    verificarNotificacoes(plano, memoria);
-    const intervalo = setInterval(() => verificarNotificacoes(plano, memoria), 5 * 60 * 1000);
+    verificarNotificacoes(plano, memoria, config);
+    const intervalo = setInterval(() => verificarNotificacoes(plano, memoria, config), 5 * 60 * 1000);
     return () => clearInterval(intervalo);
-  }, [plano, memoria]);
+  }, [plano, memoria, config]);
 
   // ── Helpers de gamificação ─────────────────────────────────────────────────
   const adicionarAnimacao = useCallback((delta) => {
@@ -914,22 +920,71 @@ export default function App() {
   }, [celebracaoNivel]);
 
   // ── Limpar tudo ─────────────────────────────────────────────────────────
-  const limpar = () => {
+  const limpar = async () => {
     if (!window.confirm('Limpar o histórico e o plano atual?')) return;
-    setPlano(null); setMensagens([]); setHistApi([]); setConcluidasExternas({});
+
+    setPlano(null);
+    setMensagens([]);
+    setHistApi([]);
+    setConcluidasExternas({});
+
     Object.values(SK).forEach(k => {
       if (k !== SK.perfil && k !== SK.onboarding && k !== SK.floraJaOi && k !== SK.memoria) {
         localStorage.removeItem(k);
       }
     });
+    localStorage.removeItem('fluxo_tarefas_concluidas');
+
+    try {
+      await Promise.all([
+        fetchComAuth(`${API_URL}/api/usuario/salvar-plano`, {
+          method: 'POST',
+          body: JSON.stringify({ plano: { compromissos: [], tarefas: [] } }),
+        }),
+        fetchComAuth(`${API_URL}/api/usuario/salvar-historico`, {
+          method: 'POST',
+          body: JSON.stringify({ historicoDisplay: [], historicoApi: [] }),
+        }),
+      ]);
+      console.log('[LIMPAR] Plano e histórico limpos no Supabase');
+    } catch (err) {
+      console.error('[LIMPAR] Erro ao limpar no Supabase:', err);
+    }
+
     const msgBV = { tipo: 'flora', texto: mensagemBoasVindas(perfil), timestamp: new Date().toISOString() };
     setMensagens([msgBV]);
     ls_set(SK.histDisplay, [msgBV]);
   };
 
-  const resetarPerfil = () => {
+  const resetarPerfil = async () => {
     if (!window.confirm('Refazer o onboarding e redefinir seu perfil?')) return;
+
+    try {
+      await fetchComAuth(`${API_URL}/api/usuario/salvar-perfil`, {
+        method: 'POST',
+        body: JSON.stringify({
+          perfil: {
+            nome: null, ocupacao: null, estilo: null, ritmo: null,
+            desafios: [], objetivos: [], configuracoes: {},
+          },
+        }),
+      });
+      await Promise.all([
+        fetchComAuth(`${API_URL}/api/usuario/salvar-plano`, {
+          method: 'POST',
+          body: JSON.stringify({ plano: { compromissos: [], tarefas: [] } }),
+        }),
+        fetchComAuth(`${API_URL}/api/usuario/salvar-memoria`, {
+          method: 'POST',
+          body: JSON.stringify({ memoria: {} }),
+        }),
+      ]);
+    } catch (err) {
+      console.error('[RESET] Erro ao limpar Supabase:', err);
+    }
+
     Object.values(SK).forEach(k => localStorage.removeItem(k));
+    localStorage.removeItem('fluxo_tarefas_concluidas');
     window.location.reload();
   };
 
@@ -1141,6 +1196,8 @@ export default function App() {
   }).length;
   const compromissosHoje = (plano?.compromissos || []).filter(c => {
     if (c.concluida) return false;
+    const excecoes = c.recorrencia?.excecoes || [];
+    if (excecoes.includes(hoje)) return false;
     if (c.recorrencia?.tipo === 'semanal') {
       return (c.recorrencia.diasSemana || []).includes(diaSemana);
     }
@@ -1153,8 +1210,8 @@ export default function App() {
   // ── App principal ────────────────────────────────────────────────────────
   return (
     <div
-      className="flex flex-col bg-[#0f0f13] font-corpo"
-      style={{ height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' }}
+      className="flex flex-col font-corpo"
+      style={{ height: '100dvh', maxHeight: '100dvh', overflow: 'hidden', background: 'var(--bg-primary)' }}
     >
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header
@@ -1437,15 +1494,32 @@ export default function App() {
           config={config}
           onSalvar={salvarConfig}
           onFechar={() => setMostrarConfig(false)}
-          onLimparMemoria={() => {
+          onLimparMemoria={async () => {
             if (!window.confirm('Limpar toda a memória da Flora? Ela vai esquecer o que aprendeu sobre você.')) return;
+
             const memoriaZerada = { gamificacao: memoria?.gamificacao || {} };
             setMemoria(memoriaZerada);
             ls_set(SK.memoria, memoriaZerada);
-            fetchComAuth(`${API_URL}/api/usuario/salvar-memoria`, {
-              method: 'POST',
-              body: JSON.stringify({ memoria: memoriaZerada }),
-            }).catch(() => {});
+
+            setHistApi([]);
+            ls_set(SK.histApi, []);
+
+            try {
+              await Promise.all([
+                fetchComAuth(`${API_URL}/api/usuario/salvar-memoria`, {
+                  method: 'POST',
+                  body: JSON.stringify({ memoria: memoriaZerada }),
+                }),
+                fetchComAuth(`${API_URL}/api/usuario/salvar-historico`, {
+                  method: 'POST',
+                  body: JSON.stringify({ historicoDisplay: [], historicoApi: [] }),
+                }),
+              ]);
+              console.log('[RESET] Memória da Flora limpa com sucesso');
+            } catch (err) {
+              console.error('[RESET] Erro ao limpar memória no Supabase:', err);
+            }
+
             setMostrarConfig(false);
           }}
         />

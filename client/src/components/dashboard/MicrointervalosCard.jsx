@@ -49,25 +49,38 @@ function calcularLacunas(compromissos) {
 
   for (const b of blocos) {
     const gap = b.inicio - cursor;
-    if (gap >= 15 && gap <= 120) {
-      lacunas.push({ inicio: cursor, fim: b.inicio, duracao: gap, antes: b.titulo });
+    if (gap >= 15) {
+      lacunas.push({
+        inicio: cursor,
+        fim: b.inicio,
+        duracao: gap,
+        antes: b.titulo,
+        tipo: gap > 120 ? 'bloco_longo' : 'microintervalo',
+      });
     }
     cursor = Math.max(cursor, b.fim);
   }
   // Lacuna após o último compromisso
   const gapFinal = FIM_DIA - cursor;
-  if (gapFinal >= 15 && gapFinal <= 120) {
-    lacunas.push({ inicio: cursor, fim: FIM_DIA, duracao: gapFinal, antes: null });
+  if (gapFinal >= 15) {
+    lacunas.push({
+      inicio: cursor,
+      fim: FIM_DIA,
+      duracao: gapFinal,
+      antes: null,
+      tipo: gapFinal > 120 ? 'bloco_longo' : 'microintervalo',
+    });
   }
 
   return lacunas.slice(0, 4); // máx 4 lacunas
 }
 
-function labelDuracao(min) {
-  if (min < 60) return `~${min}min`;
+function labelDuracao(min, tipo) {
+  if (min < 60) return `⚡ ~${min}min livres`;
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return m ? `~${h}h${m}min` : `~${h}h`;
+  const durStr = m ? `${h}h${m}min` : `${h}h`;
+  return tipo === 'bloco_longo' ? `🕐 ${durStr} livres` : `⚡ ~${durStr} livres`;
 }
 
 export default function MicrointervalosCard({ plano, onAbrirChat }) {
@@ -109,25 +122,32 @@ export default function MicrointervalosCard({ plano, onAbrirChat }) {
         </p>
       ) : (
         <div className="space-y-2">
-          {lacunas.map((l, i) => (
-            <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-xl"
-              style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)' }}>
-              <div className="flex-shrink-0">
-                <p className="text-[11px] font-mono text-blue-300">{fmt(l.inicio)}–{fmt(l.fim)}</p>
-                <p className="text-[10px] text-zinc-600">{labelDuracao(l.duracao)}</p>
+          {lacunas.map((l, i) => {
+            const isLongo = l.tipo === 'bloco_longo';
+            return (
+              <div key={i} className="flex items-center gap-3 py-2 px-3 rounded-xl"
+                style={isLongo
+                  ? { background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }
+                  : { background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)' }
+                }>
+                <div className="flex-shrink-0">
+                  <p className={`text-[11px] font-mono ${isLongo ? 'text-indigo-300' : 'text-blue-300'}`}>{fmt(l.inicio)}–{fmt(l.fim)}</p>
+                  <p className="text-[10px] text-zinc-500 font-semibold">{labelDuracao(l.duracao, l.tipo)}</p>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-zinc-400 leading-snug">
+                    {l.antes ? `Antes de ${l.antes}` : 'Final do dia'}
+                  </p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5 italic">
+                    {l.duracao <= 20 ? 'Respira, hidrata, estica.' :
+                     l.duracao <= 45 ? 'Leitura leve, emails ou descanso.' :
+                     l.duracao <= 120 ? 'Estudo focado ou tarefa pendente.' :
+                     'Bloco grande — bom pra projeto, descanso ou o que quiser.'}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] text-zinc-400 leading-snug">
-                  {l.antes ? `Antes de ${l.antes}` : 'Final do dia'}
-                </p>
-                <p className="text-[10px] text-zinc-600 mt-0.5 italic">
-                  {l.duracao <= 20 ? 'Respira, hidrata, estica.' :
-                   l.duracao <= 45 ? 'Leitura leve, emails ou descanso.' :
-                   'Estudo focado ou tarefa pendente.'}
-                </p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

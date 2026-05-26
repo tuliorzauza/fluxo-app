@@ -56,6 +56,10 @@ export default function Login() {
               ? `${window.location.origin}/`
               : 'https://fluxo-app-zeta.vercel.app/'
           }
+          queryParams={{
+            prompt: 'select_account',
+            access_type: 'offline',
+          }}
           localization={{
             variables: {
               sign_in: {

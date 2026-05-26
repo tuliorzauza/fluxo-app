@@ -443,6 +443,17 @@ app.post('/api/usuario/salvar-perfil', autenticarUsuario, async (req, res) => {
   }
 });
 
+app.post('/api/usuario/salvar-historico', autenticarUsuario, async (req, res) => {
+  try {
+    const { historicoDisplay, historicoApi } = req.body;
+    await salvarHistorico(req.userId, historicoDisplay || [], historicoApi || []);
+    res.json({ sucesso: true });
+  } catch (error) {
+    console.error('[SAVE] Erro ao salvar histórico:', error);
+    res.status(500).json({ erro: 'Erro ao salvar histórico' });
+  }
+});
+
 // ── Métricas reais da semana a partir dos compromissos ───────────────────────
 function calcularMetricasSemana(compromissos) {
   const JANELA_INI  = 8  * 60; // 08h = 480 min
