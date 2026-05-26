@@ -430,3 +430,21 @@ Problema secundário: o middleware `autenticarUsuario` estava no endpoint SSE (`
 **Risco futuro:** Mensagens `[MODO_CAOS]` agora também são ocultas da UI — o usuário vê apenas a resposta da Flora, sem o trigger de sistema. Isso é comportamento correto, mas se alguma mensagem de sistema precisar de feedback visual no futuro, a regex precisará ser revisitada.
 
 ---
+
+### [2026-05-26] BUG-014 — Flora reagendando compromissos pontuais automaticamente
+
+**Sintoma:** Compromissos pontuais (com data específica, sem recorrência) marcados como concluídos reapareciam na semana seguinte com data avançada, sem o usuário pedir reagendamento.
+
+**Causa raiz:** A função `ajustarDatasFuturas` em `server/index.js` avança datas passadas para a próxima ocorrência futura. Combinado com a ausência de uma regra explícita no system prompt proibindo reagendamento automático, a Flora podia interpretar compromissos pontuais passados como se fossem recorrentes e devolver o plano com datas avançadas na próxima resposta.
+
+**Impacto:** Compromissos únicos (ex: consulta médica, reunião específica) ressurgiam na agenda em datas incorretas — causando confusão e perda de confiança do usuário no app.
+
+**Solução aplicada:** Adicionado bloco `REGRA SOBRE REAGENDAMENTO — OBRIGATÓRIA` em `server/services/flora.js`, inserido antes da seção `REMOÇÃO PONTUAL vs REMOÇÃO DA ROTINA`. A regra proíbe explicitamente:
+- Mover compromisso passado para data futura sem pedido explícito
+- Interpretar compromisso pontual como recorrente
+- Criar nova ocorrência de compromisso pontual
+Reagendamento só ocorre quando o usuário usar palavras explícitas: "reagenda", "move", "adiar", "remarcar", "muda pra", "transfere pra".
+
+**Risco futuro:** A função `ajustarDatasFuturas` no backend ainda opera sobre todas as datas do plano retornado pela Flora. Se a Flora retornar o plano sem modificar datas (apenas com plano: null), não há problema. Mas se ela retornar o plano completo após uma conversa que não envolveu alterações, `ajustarDatasFuturas` pode ainda avançar datas passadas. Considerar proteger compromissos concluídos (com `concluida: true`) de `ajustarDatasFuturas` no futuro.
+
+---
