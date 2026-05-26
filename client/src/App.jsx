@@ -578,13 +578,20 @@ export default function App() {
             ls_set(SK.perfil, perfilAtualizado);
 
           } else if (data.type === 'error') {
-            throw new Error(data.erro || 'Erro no streaming');
+            const err = new Error(data.erro || 'Erro no streaming');
+            err.errorType = data.errorType;
+            throw err;
           }
         }
       }
     } catch (e) {
       console.error(e);
-      setErro(e.message || 'Algo deu errado. Tenta de novo?');
+      const isOverloaded = e.errorType === 'overloaded_error' ||
+        (e.message || '').toLowerCase().includes('overloaded');
+      setErro(isOverloaded
+        ? 'A Flora está com muita demanda agora. Tenta de novo em alguns segundos 🌿'
+        : e.message || 'Algo deu errado. Tenta de novo?'
+      );
       setMensagens(novasMensagens);
     } finally {
       setCarregando(false);

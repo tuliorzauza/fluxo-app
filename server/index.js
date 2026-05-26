@@ -340,7 +340,11 @@ app.post('/api/processar/stream', async (req, res) => {
 
   } catch (error) {
     console.error('Erro no stream:', error);
-    sendEvent({ type: 'error', erro: error.message || 'Erro interno' });
+    sendEvent({
+      type: 'error',
+      erro: error.message || 'Erro interno',
+      errorType: error.error?.type || error.type || null,
+    });
     res.end();
   }
 });
