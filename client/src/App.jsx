@@ -17,7 +17,7 @@ import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
 import ModalConfiguracoes from './components/ModalConfiguracoes';
 
-import { calcularScore, preservarEstadosTarefas } from './utils/planoUtils';
+import { calcularScore, preservarEstadosTarefas, mergeCompromissos } from './utils/planoUtils';
 import {
   processarEventoGamificacao,
   getNivel,
@@ -540,7 +540,9 @@ export default function App() {
             if (novoPlano && !input.includes('[MODO_CAOS]')) {
               setPlano(prevPlano => {
                 const tarefasMerged = preservarEstadosTarefas(prevPlano?.tarefas || [], novoPlano.tarefas);
-                const planoAtualizado = { ...novoPlano, tarefas: tarefasMerged };
+                // BUG-025: merge defensivo preserva excecoes de recorrência que a Flora pode ter omitido
+                const compromissosMerged = mergeCompromissos(prevPlano?.compromissos, novoPlano.compromissos);
+                const planoAtualizado = { ...novoPlano, tarefas: tarefasMerged, compromissos: compromissosMerged };
                 ls_set(SK.plano, planoAtualizado);
                 return planoAtualizado;
               });

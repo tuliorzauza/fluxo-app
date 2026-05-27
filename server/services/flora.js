@@ -32,6 +32,17 @@ const CONSELHOS_OBJETIVO = {
   habitos: 'Empilhamento de hábitos (habit stacking), começar pequeno, celebrar consistência — não perfeição.',
 };
 
+// ─── Helpers de fuso horário ─────────────────────────────────────────────────
+// Railway roda em UTC — agoraBrasilia() garante hora/data correta para usuários BRT (UTC-3).
+// Sem isso, após 21h BRT o servidor já está no dia seguinte → Flora recebe data errada.
+function agoraBrasilia() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+}
+// toYMD() usa os getters locais do objeto Date (não toISOString que sempre é UTC)
+function toYMD(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ─── Helpers de agenda (usados no prompt) ────────────────────────────────────
 function _compromisosDoDia(comproms, dataYMD) {
   if (!comproms?.length) return [];
@@ -106,19 +117,24 @@ function _horariosLivres(comproms, dataYMD) {
 
 // ─── Construtor do system prompt ─────────────────────────────────────────────
 function buildFloraPrompt(perfil, perguntaProfunda = null, memoria = null, compromissosPendentes = [], planoAtual = null) {
-  // Data/hora gerada FRESH a cada requisição — nunca cacheada
-  const agora = new Date();
-  const dataFormatada = agora.toLocaleDateString('pt-BR', {
+  // Data/hora gerada FRESH a cada requisição — sempre em fuso de Brasília (BRT, UTC-3)
+  // BUG-023: Railway roda em UTC. Sem agoraBrasilia(), Flora recebe dia errado após 21h BRT.
+  const agora = agoraBrasilia();
+  const dataFormatada = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'America/Sao_Paulo',
   });
-  const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const horaFormatada = new Date().toLocaleTimeString('pt-BR', {
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  });
   const linhaDataHora = `DATA E HORA EXATA AGORA: ${dataFormatada}, ${horaFormatada}.\nUse APENAS essa data como referência absoluta para todas as datas e horários.\nNunca calcule datas a partir do seu treinamento ou contexto anterior.`;
 
   // Agenda do dia para injeção no prompt
-  const hojeStr = agora.toISOString().split('T')[0];
+  const hojeStr = toYMD(agora);
   const horaAtualMinutos = agora.getHours() * 60 + agora.getMinutes();
-  const amanhaDate = new Date(agora); amanhaDate.setDate(amanhaDate.getDate() + 1);
-  const amanhaStr = amanhaDate.toISOString().split('T')[0];
+  const amanhaDate = new Date(agora); amanhaDate.setDate(agora.getDate() + 1);
+  const amanhaStr = toYMD(amanhaDate);
   const comproms = planoAtual?.compromissos || [];
 
   const nome = perfil?.nome || 'você';
@@ -196,7 +212,7 @@ COMO POPULAR ROTINA.COMPROMETIDA:
   for (let i = 0; i < 7; i++) {
     const d = new Date(agora);
     d.setDate(agora.getDate() + i);
-    diasSemana.push(d.toISOString().split('T')[0]);
+    diasSemana.push(toYMD(d)); // toYMD usa getters locais — correto mesmo em UTC
   }
 
   const tarefas = planoAtual?.tarefas || [];
@@ -701,6 +717,37 @@ REGRA CRÍTICA DE ISOLAMENTO DE EXCEÇÕES:
 - NUNCA aplique excecoes a um item pelo título — use sempre o ID
 - NUNCA altere o array de excecoes de um item diferente do solicitado
 - Antes de enviar, verifique: "Só modifiquei o item ID=[X] e mantive todos os outros inalterados?"
+
+══════════════════════════════════
+MOVER OCORRÊNCIA ÚNICA — PADRÃO OBRIGATÓRIO
+══════════════════════════════════
+Quando o usuário pedir para mover UMA ocorrência de compromisso recorrente
+(ex: "mova o inglês dessa sexta para quarta", "esse sábado o skate vai ser na quinta"):
+
+OBRIGATÓRIO executar as DUAS ações simultaneamente no plano retornado:
+
+AÇÃO 1 — Adicionar exceção no item recorrente original:
+  No objeto do compromisso recorrente, adicionar a data ORIGINAL em recorrencia.excecoes.
+  Ex: inglês toda sexta → adicionar a sexta desta semana em excecoes
+  { ...compromissoOriginal, recorrencia: { ...recorrencia, excecoes: [...excecoes, 'YYYY-MM-DD-data-original'] } }
+
+AÇÃO 2 — Criar novo item pontual para a nova data:
+  { ...compromissoOriginal, id: 'pontual-[titulo-simplificado]-[data-nova]',
+    recorrencia: null, data: 'YYYY-MM-DD-nova-data' }
+  → data calculada com o CÁLCULO OBRIGATÓRIO da REGRA DE DATAS acima
+  → sem recorrencia (é pontual — ocorre só naquele dia)
+
+AMBAS as ações devem aparecer no plano retornado.
+Se apenas uma aparecer → bug de duplicação (sem excecao) ou desaparecimento (sem pontual) ocorre.
+
+CHECKLIST antes de enviar o plano:
+  ✓ O item recorrente está no plano COM a excecao da data original adicionada?
+  ✓ O item pontual está no plano COM a nova data correta?
+  ✓ Todos os outros compromissos estão intactos e inalterados?
+  ✓ A nova data é realmente o dia da semana que o usuário pediu? (valide com REGRA DE DATAS)
+
+NUNCA omitir o item recorrente do plano ao fazer essa operação.
+NUNCA criar o pontual sem adicionar a excecao no recorrente.
 
 ══════════════════════════════════
 REGRA DE REMOÇÃO E ALTERAÇÃO

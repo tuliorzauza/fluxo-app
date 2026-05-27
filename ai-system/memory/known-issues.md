@@ -390,6 +390,87 @@ Badge convertido para `<button>` com popover React mostrando breakdown tarefas v
 
 ---
 
+### [2026-05-26] BUG-023 — Fuso horário errado no servidor (Railway UTC vs BRT)
+
+**Sintoma:** Após 21h horário de Brasília, a Flora recebe "hoje é quinta" quando na verdade é quarta. Compromissos criados ou movidos nesse horário aparecem com data de +1 dia.
+
+**Causa raiz:** Railway roda em UTC. `new Date()` no servidor retorna hora UTC. Todas as chamadas em `buildFloraPrompt()` (flora.js) e nas funções de validação de data (index.js) usavam `new Date()` puro sem timezone, além de `agora.toISOString().split('T')[0]` que sempre retorna UTC independente do sistema. Para usuários em UTC-3, após 21h local o servidor já está às 00h do dia seguinte.
+
+**Impacto:** Flora gera datas erradas (offset +1 dia) para qualquer pedido feito após 21h BRT. Compromissos criados, movidos ou agendados nesse horário aparecem no dia errado.
+
+**Solução aplicada:**
+1. Adicionada função `agoraBrasilia()` e `toYMD()` em `server/services/flora.js`:
+   - `agoraBrasilia()` retorna `new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))` — Date com getters locais em BRT
+   - `toYMD(d)` usa `.getFullYear()/.getMonth()/.getDate()` em vez de `.toISOString()` (que seria UTC)
+2. Em `buildFloraPrompt()`: substituído `new Date()` por `agoraBrasilia()`, `agora.toISOString()` por `toYMD(agora)`, `agora.getHours()` já correto pois agora usa BRT; `toLocaleDateString/toLocaleTimeString` agora passam `timeZone: 'America/Sao_Paulo'`
+3. Adicionada função `agoraBrasilia()` e `toYMDBrasilia()` em `server/index.js`
+4. `proximoFuturo()` usa `agoraBrasilia()` em vez de `new Date()`, retorna `toYMDBrasilia(d)`
+
+**Arquivos:** `server/services/flora.js`, `server/index.js`
+
+---
+
+### [2026-05-26] BUG-024 — Flora sem regra explícita para mover ocorrência única de recorrente
+
+**Sintoma:** Usuário pede "mova o inglês dessa sexta para quarta". Resultado: quarta aparece OU sexta some, mas não ambos corretamente — gerando duplicação (sexta continua + quarta aparece) ou desaparecimento (sexta some sem quarta aparecer).
+
+**Causa raiz:** O system prompt de `flora.js` cobria dois padrões: (1) cancelamento pontual → adicionar excecao; (2) remoção total → remover do plano. Mas não havia regra explícita para o padrão "mover uma ocorrência" que exige DUAS ações simultâneas: adicionar excecao na data original E criar item pontual na nova data.
+
+**Impacto:** Flora fazia apenas uma das duas ações (ou às vezes nenhuma), causando duplicação ou perda de compromisso.
+
+**Solução aplicada:** Adicionada seção "MOVER OCORRÊNCIA ÚNICA — PADRÃO OBRIGATÓRIO" no system prompt de `flora.js`, logo antes de "REGRA DE REMOÇÃO E ALTERAÇÃO". A regra define: AÇÃO 1 = adicionar excecao no item recorrente, AÇÃO 2 = criar pontual com nova data. Inclui checklist de validação obrigatório antes de enviar o plano.
+
+**Arquivo:** `server/services/flora.js`
+
+---
+
+### [2026-05-26] BUG-025 — Merge de compromissos substituía excecoes ao aplicar novoPlano
+
+**Sintoma:** Flora adiciona excecao a um compromisso recorrente (cancelamento pontual). Na próxima resposta da Flora (qualquer assunto), se o plano retornado não incluir explicitamente a excecao naquele item, ela desaparece — e o evento "cancelado" volta a aparecer.
+
+**Causa raiz:** Em `App.jsx`, ao aplicar `novoPlano` retornado pela Flora, compromissos eram completamente substituídos: `{ ...novoPlano, tarefas: tarefasMerged }`. Sem merge defensivo para compromissos, qualquer excecao omitida pela Flora era perdida. Tarefas já tinham merge via `preservarEstadosTarefas`, mas compromissos não.
+
+**Impacto:** Cancelamentos pontuais de compromissos recorrentes podiam ser "desfeitos" automaticamente na próxima conversa com a Flora.
+
+**Solução aplicada:**
+1. Adicionada função `mergeCompromissos(anteriores, novos)` em `client/src/utils/planoUtils.js`: faz union das excecoes (anteriores + novas) para itens com mesmo ID e recorrencia. Conteúdo (titulo, hora, etc.) prevalece do novoPlano.
+2. Importada `mergeCompromissos` em `App.jsx` e aplicada no `setPlano`:
+   `compromissos: mergeCompromissos(prevPlano?.compromissos, novoPlano.compromissos)`
+
+**Arquivos:** `client/src/utils/planoUtils.js`, `client/src/App.jsx`
+
+---
+
+### [2026-05-26] BUG-026 — ajustarData ressuscitava eventos pontuais expirados
+
+**Sintoma:** Compromisso pontual criado semanas atrás (ex: reunião em 01/05) reaparece no Painel do Dia como se fosse desta semana, em dia aleatório que coincide com "hoje".
+
+**Causa raiz:** `ajustarData()` em `server/index.js` tinha loop `while (data < hoje) data.setDate(data.getDate() + 7)` — avançava qualquer data passada de 7 em 7 dias até cair no futuro. Um compromisso pontual expirado de uma sexta poderia ser "ressuscitado" para a próxima sexta futura. `ajustarDatasFuturas()` era chamada em `posProcessar()` — ou seja, após cada resposta da Flora — aplicando esse avanço continuamente.
+
+**Impacto:** Eventos únicos do passado reapareciam periodicamente no Painel do Dia como compromissos futuros, gerando confusão.
+
+**Solução aplicada:**
+1. `ajustarData()`: o branch YYYY-MM-DD agora apenas retorna `dataStr` sem avanço. Compromissos expirados ficam no passado — não são ressuscitados.
+2. `posProcessar()`: removida chamada `ajustarDatasFuturas(plano)`. Flora já gera datas corretas via REGRA DE DATAS no prompt. `ajustarData()` ainda converte aliases textuais (ex: "segunda" → YYYY-MM-DD próxima segunda).
+
+**Arquivo:** `server/index.js`
+
+---
+
+### [2026-05-26] BUG-027 — TaskList sem filtro de data antes de normalizar compromissos
+
+**Sintoma:** Painel do Dia mostra compromissos pontuais expirados (data passada) como se fossem pendentes de hoje ou atrasados.
+
+**Causa raiz:** `TaskList.jsx` recebia todos os `compromissos` do plano (Dashboard passa sem filtro). A função `compromissosNorm` aplicava `normalizarCompromisso()` em todos, incluindo pontuais com data no passado. `grupoData(prazo)` classificava qualquer data < hoje como 'atrasado', fazendo-os aparecer na seção "⚠️ Atrasadas".
+
+**Impacto:** Compromissos pontuais antigos (que deveriam estar no histórico) apareciam no Painel do Dia como tarefas atrasadas, gerando ruído visual e confusão.
+
+**Solução aplicada:** Adicionado filtro `compromissosRelevantes` antes de `normalizarCompromisso()` em `TaskList.jsx`: compromissos recorrentes são sempre incluídos (têm lógica própria de próxima ocorrência); compromissos pontuais só são incluídos se `c.data >= hojeStr`.
+
+**Arquivo:** `client/src/components/TaskList.jsx`
+
+---
+
 ### [2026-05-26] BUG-022 — Toggles de notificação eram ignorados
 
 **Sintoma:** Usuário desativa "Lembretes 30min antes" nas configurações. Notificações de lembrete continuam aparecendo normalmente.

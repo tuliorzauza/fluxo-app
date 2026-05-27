@@ -250,9 +250,24 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle }) 
     .filter(t => t.tipo !== 'flora')
     .map(t => ({ ...t, _viewId: t.id, concluida: t.concluida || !!concluidasExt[t.id] }));
 
+  // BUG-027: filtrar compromissos relevantes ANTES de normalizar.
+  // Sem esse filtro, compromissos pontuais expirados (data passada) aparecem no Painel do Dia
+  // porque normalizarCompromisso() os processa e grupoData() pode colocá-los em "Hoje" ou "Atrasado".
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const hojeStr = hoje.toISOString().split('T')[0];
+  const compromissosRelevantes = compromissos.filter(c => {
+    if (!c.titulo) return false;
+    // Compromisso recorrente — sempre incluir (proximaOcorrencia calcula a próxima data)
+    if (c.recorrencia) return true;
+    // Compromisso pontual — incluir apenas se a data é hoje ou futura
+    if (c.data) {
+      return c.data >= hojeStr;
+    }
+    return false;
+  });
+
   // Normaliza compromissos para o mesmo formato (já inclui _viewId prefixado)
-  const compromissosNorm = compromissos
-    .filter(c => c.titulo)
+  const compromissosNorm = compromissosRelevantes
     .map(c => {
       const norm = normalizarCompromisso(c);
       return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };

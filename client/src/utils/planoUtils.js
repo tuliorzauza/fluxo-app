@@ -2,6 +2,40 @@
  * planoUtils.js — Utilitários para manipulação do plano da Flora
  */
 
+/**
+ * BUG-025 — Merge defensivo de compromissos.
+ * Ao aplicar novoPlano da Flora, preserva excecoes de recorrência de itens anteriores.
+ * Evita que a Flora "esqueça" de retornar uma excecao e ressuscite um evento cancelado.
+ *
+ * Regra: excecoes = union(excecoes_anteriores, excecoes_novas)
+ * Outros campos: prevalece sempre o novoPlano (Flora é fonte de verdade para conteúdo).
+ */
+export function mergeCompromissos(anteriores, novos) {
+  if (!novos) return anteriores || [];
+
+  const mapaAnteriores = new Map((anteriores || []).map(c => [c.id, c]));
+
+  return novos.map(novoComp => {
+    const anterior = mapaAnteriores.get(novoComp.id);
+    if (!anterior || !novoComp.recorrencia) return novoComp;
+
+    // Unifica excecoes: preserva as anteriores caso Flora tenha omitido alguma
+    const excecoesAnteriores = anterior.recorrencia?.excecoes || [];
+    const excecoesNovas = novoComp.recorrencia?.excecoes || [];
+    const excecoesUnificadas = [...new Set([...excecoesAnteriores, ...excecoesNovas])];
+
+    if (excecoesUnificadas.length === excecoesNovas.length) return novoComp; // nenhuma perda
+
+    return {
+      ...novoComp,
+      recorrencia: {
+        ...novoComp.recorrencia,
+        excecoes: excecoesUnificadas,
+      },
+    };
+  });
+}
+
 export function calcularScore(plano) {
   if (!plano?.tarefas || plano.tarefas.length === 0) return plano;
   const total = plano.tarefas.length;

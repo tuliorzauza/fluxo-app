@@ -35,42 +35,48 @@ const DIAS_ALIAS = [
   ['sábado', 'sab', 'sabado', 'sáb'],
 ];
 
+// BUG-023: Railway roda em UTC — agoraBrasilia() garante datas corretas para usuários BRT (UTC-3).
+// Sem isso, após 21h BRT o servidor já está no dia seguinte → datas com offset de +1 dia.
+function agoraBrasilia() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+}
+function toYMDBrasilia(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function proximoFuturo(diaSemanaIdx) {
-  const hoje = new Date();
+  const hoje = agoraBrasilia();
   hoje.setHours(0, 0, 0, 0);
   const hojeDay = hoje.getDay();
   let diff = diaSemanaIdx - hojeDay;
   if (diff < 0) diff += 7;
   const d = new Date(hoje);
   d.setDate(hoje.getDate() + diff);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return toYMDBrasilia(d);
 }
 
 function ajustarData(dataStr) {
   if (!dataStr) return dataStr;
   const lower = dataStr.toLowerCase().trim();
 
+  // Aliases textuais de dias da semana (ex: "segunda", "terça") → próxima ocorrência futura
   for (let i = 0; i < DIAS_ALIAS.length; i++) {
     if (DIAS_ALIAS[i].some(a => lower.includes(a))) return proximoFuturo(i);
   }
 
   if (/^\d{4}-\d{2}-\d{2}/.test(dataStr)) {
-    const data = new Date(dataStr + 'T12:00:00');
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    if (data < hoje) {
-      while (data < hoje) data.setDate(data.getDate() + 7);
-      return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
-    }
+    // BUG-026: não avançar datas passadas automaticamente.
+    // Compromissos pontuais expirados devem ficar no histórico — não ressuscitar no Painel do Dia.
+    // Flora já gera datas corretas via REGRA DE DATAS no prompt.
     return dataStr;
   }
 
+  // Formato DD/MM ou DD/MM/YYYY — ainda converte para YYYY-MM-DD mas sem avançar
   const m = dataStr.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
   if (m) {
-    const ano = m[3] ? parseInt(m[3]) : new Date().getFullYear();
+    const ano = m[3] ? parseInt(m[3]) : agoraBrasilia().getFullYear();
     const data = new Date(ano, parseInt(m[2]) - 1, parseInt(m[1]), 12);
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    while (data < hoje) data.setDate(data.getDate() + 7);
-    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+    return toYMDBrasilia(data);
   }
 
   return dataStr;
@@ -167,7 +173,9 @@ function sanitizarTarefas(tarefas) {
 function posProcessar({ rawText, planoAtual, messages, memoria }) {
   let { mensagem, modo, plano, perguntaFeita, quickReplies, memoriaUpdate, eventoGamificacao } = parseFloraResponse(rawText);
 
-  plano = ajustarDatasFuturas(plano);
+  // BUG-026: ajustarDatasFuturas removida do fluxo de chat para não ressuscitar eventos expirados.
+  // Flora gera datas corretas via REGRA DE DATAS. ajustarData() ainda converte aliases textuais.
+  // ajustarDatasFuturas pode ser chamada pontualmente em migrações de dados se necessário.
 
   if (plano?.tarefas) {
     plano.tarefas = sanitizarTarefas(plano.tarefas);
