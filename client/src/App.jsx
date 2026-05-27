@@ -17,7 +17,7 @@ import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
 import ModalConfiguracoes from './components/ModalConfiguracoes';
 
-import { calcularScore, preservarEstadosTarefas, mergeCompromissos } from './utils/planoUtils';
+import { calcularScore } from './utils/planoUtils';
 import {
   processarEventoGamificacao,
   getNivel,
@@ -537,25 +537,11 @@ export default function App() {
             setHistApi(_historico || []);
             ls_set(SK.histApi, _historico || []);
 
+            // BUG-ESTRUTURAL-2: backend aplica diffs e retorna plano já correto — sem merge no frontend
             if (novoPlano && !input.includes('[MODO_CAOS]')) {
-              setPlano(prevPlano => {
-                const tarefasMerged = preservarEstadosTarefas(prevPlano?.tarefas || [], novoPlano.tarefas);
-                // BUG-025: merge defensivo preserva excecoes de recorrência que a Flora pode ter omitido
-                const compromissosMerged = mergeCompromissos(prevPlano?.compromissos, novoPlano.compromissos);
-                // BUG-030: preserva diagnostico/proximaAcao/sugestaoPratica quando Flora
-                // retorna plano parcial (ex: só atualizou tarefas sem reanalisar a semana).
-                // ?? (nullish coalescing) garante que null/undefined do novoPlano usa o anterior,
-                // mas respeita valores falsy válidos (ex: score = 0).
-                const planoAtualizado = {
-                  ...novoPlano,
-                  tarefas: tarefasMerged,
-                  compromissos: compromissosMerged,
-                  diagnostico: novoPlano.diagnostico ?? prevPlano?.diagnostico,
-                  proximaAcao: novoPlano.proximaAcao ?? prevPlano?.proximaAcao,
-                  sugestaoPratica: novoPlano.sugestaoPratica ?? prevPlano?.sugestaoPratica,
-                };
-                ls_set(SK.plano, planoAtualizado);
-                return planoAtualizado;
+              setPlano(() => {
+                ls_set(SK.plano, novoPlano);
+                return novoPlano;
               });
             }
 

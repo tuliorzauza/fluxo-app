@@ -3,6 +3,45 @@
  * Preparado para evolução: Modo Conselheira, base de conhecimento futura.
  */
 
+/**
+ * BUG-ESTRUTURAL-2 — Schema de alteracoes[] (diffs)
+ *
+ * Em vez de retornar o plano completo, Flora retorna apenas as alterações.
+ * O backend carrega o plano atual do Supabase, aplica os diffs e salva.
+ *
+ * Operações disponíveis em alteracoes[]:
+ *
+ * { op: 'inicializar', compromissos: [...], tarefas: [...] }
+ *   → Substitui compromissos e tarefas completamente (usado no onboarding)
+ *
+ * { op: 'add_compromisso', compromisso: { id, titulo, tipo, ... } }
+ *   → Adiciona novo compromisso (ignora se id já existe)
+ *
+ * { op: 'update_compromisso', id: '...', campos: { titulo?, horarioInicio?, ... } }
+ *   → Atualiza campos parciais de um compromisso existente (por id)
+ *
+ * { op: 'delete_compromisso', id: '...' }
+ *   → Remove compromisso por id
+ *
+ * { op: 'add_excecao', id: '...', data: 'YYYY-MM-DD' }
+ *   → Adiciona data às excecoes[] do compromisso (cancela ocorrência pontual)
+ *
+ * { op: 'add_tarefa', tarefa: { id, titulo, prazo?, ... } }
+ *   → Adiciona nova tarefa (ignora se id já existe)
+ *
+ * { op: 'update_tarefa', id: '...', campos: { titulo?, prazo?, ... } }
+ *   → Atualiza campos parciais de uma tarefa existente (por id)
+ *
+ * { op: 'delete_tarefa', id: '...' }
+ *   → Remove tarefa por id
+ *
+ * { op: 'set_diagnostico', diagnostico: '...', proximaAcao: '...', sugestaoPratica: '...' }
+ *   → Atualiza apenas os campos de diagnóstico (não toca compromissos/tarefas)
+ *
+ * Retrocompatibilidade: se Flora retornar "plano" em vez de "alteracoes",
+ * o campo é tratado como _planoLegado e aplicado como inicializar implícito.
+ */
+
 const { buildPerfilContexto } = require('./userContext');
 
 const ESTILOS = {
@@ -981,7 +1020,9 @@ Seu papel é EXTRAIR informações que o usuário nem sabe que precisa dar.
 ══════════════════════════════════
 FORMATO DE RESPOSTA
 ══════════════════════════════════
-Retorne SEMPRE e SOMENTE JSON válido, sem texto antes ou depois:
+Retorne SEMPRE e SOMENTE JSON válido, sem texto antes ou depois.
+
+Em vez de retornar o plano completo, retorne APENAS as alterações (diffs):
 
 {
   "mensagem": "sua mensagem conversacional — como falaria no WhatsApp. Pode ter quebras de linha com \\n",
@@ -990,47 +1031,55 @@ Retorne SEMPRE e SOMENTE JSON válido, sem texto antes ou depois:
   "perguntaFeita": "id_da_pergunta_profunda_se_fez | null",
   "memoriaUpdate": { "chave.subcampo": "valor" },
   "eventoGamificacao": "compromisso_feito | compromisso_parcial | compromisso_perdido | null",
-  "plano": {
-    "compromissos": [{
-      "id": "comp-unico-id",
-      "titulo": "",
-      "categoria": "fixo|rotina|compromisso",
-      "data": "YYYY-MM-DD",
-      "hora": "HH:MM ou null",
-      "duracao": 60,
-      "tipo": "reuniao|consulta|evento|outro",
-      "recorrencia": null
-    }],
-    "tarefas": [{
-      "id": "id_unico_persistente",
-      "titulo": "",
-      "categoria": "rotina|lembrete|tarefa",
-      "prazo": "YYYY-MM-DD ou null",
-      "prioridade": "alta|media|baixa",
-      "blocoSugerido": "ex: Terça 09h-11h ou null",
-      "recorrencia": null,
-      "concluida": false
-    }],
-    "diagnostico": { "principaisGargalos": [""], "tempoEstimadoPerdido": "", "scoreTempoLivre": 72 },
-    "proximaAcao": "",
-    "sugestaoPratica": { "problema": "", "solucao": "", "tempoRecuperado": "" },
-    "reorganizacoes": "mensagem sobre o que mudou, ou null"
-  }
+  "alteracoes": [
+    { "op": "...", ...campos }
+  ]
 }
 
-QUANDO incluir "plano" (não null):
-- Apenas após o usuário CONFIRMAR o que vai ser criado
+OPERAÇÕES DISPONÍVEIS em alteracoes[]:
+
+Adicionar compromisso:
+{ "op": "add_compromisso", "compromisso": { "id": "comp-unico", "titulo": "", "categoria": "fixo|rotina|compromisso", "hora": "HH:MM ou null", "duracao": 60, "tipo": "reuniao|consulta|evento|outro", "recorrencia": null } }
+
+Atualizar campos de um compromisso existente (use o id original):
+{ "op": "update_compromisso", "id": "comp-existente", "campos": { "titulo": "novo título", "hora": "10:00" } }
+
+Remover compromisso:
+{ "op": "delete_compromisso", "id": "comp-existente" }
+
+Cancelar ocorrência pontual de compromisso recorrente (NÃO alterar diasSemana):
+{ "op": "add_excecao", "id": "comp-existente", "data": "YYYY-MM-DD" }
+
+Adicionar tarefa:
+{ "op": "add_tarefa", "tarefa": { "id": "tarefa-unico", "titulo": "", "categoria": "rotina|lembrete|tarefa", "prazo": "YYYY-MM-DD ou null", "prioridade": "alta|media|baixa", "blocoSugerido": "ex: Terça 09h-11h ou null", "recorrencia": null, "concluida": false } }
+
+Atualizar campos de uma tarefa existente (use o id original):
+{ "op": "update_tarefa", "id": "tarefa-existente", "campos": { "titulo": "novo", "prazo": "2025-06-10" } }
+
+Remover tarefa:
+{ "op": "delete_tarefa", "id": "tarefa-existente" }
+
+Atualizar diagnóstico (sem tocar em compromissos/tarefas):
+{ "op": "set_diagnostico", "diagnostico": { "principaisGargalos": [""], "tempoEstimadoPerdido": "", "scoreTempoLivre": 72 }, "proximaAcao": "", "sugestaoPratica": { "problema": "", "solucao": "", "tempoRecuperado": "" } }
+
+Substituir tudo (APENAS no onboarding ou reset completo):
+{ "op": "inicializar", "compromissos": [...], "tarefas": [...] }
+
+QUANDO incluir "alteracoes" (não vazio):
+- Apenas após o usuário CONFIRMAR o que vai ser criado ou alterado
 - Quando está atualizando plano existente com dados já confirmados
 
-QUANDO "plano" = null:
+QUANDO "alteracoes" = [] ou omitir:
 - Respostas conversacionais ou emocionais
 - Proposta aguardando confirmação do usuário
 - Perguntas de aprofundamento
+- MODO CAOS (nunca alterar plano no Modo Caos)
 
 IMPORTANTE:
-- IDs de tarefas e compromissos devem ser únicos e persistentes
-- Se atualizando itens existentes, mantenha os IDs anteriores
+- IDs devem ser únicos e persistentes — se atualizando item existente, use o ID original
 - Datas SEMPRE no futuro, formato YYYY-MM-DD
+- NUNCA retorne o plano completo — apenas as operações que mudaram
+- Prefira update_compromisso/update_tarefa a delete+add quando possível (preserva histórico)
 
 ══════════════════════════════════
 MODO CAOS — PROTOCOLO DE EMERGÊNCIA
@@ -1150,42 +1199,65 @@ function parseFloraResponse(rawText) {
 
     const parsed = JSON.parse(jsonStr);
 
-    // Normaliza tarefas (categoria default + IDs)
-    if (parsed.plano?.tarefas) {
-      const processadas = parsed.plano.tarefas.map((t, i) => ({
-        ...t,
-        id: t.id || `tarefa-${Date.now()}-${i}`,
-        categoria: t.categoria || (t.prazo || t.blocoSugerido ? 'tarefa' : 'lembrete'),
-        recorrencia: t.recorrencia || null,
-        concluida: t.concluida || false,
-      }));
-
-      // Dedup primário por ID — mantém última ocorrência (versão mais atualizada)
-      const porId = new Map(processadas.map(t => [t.id, t]));
-
-      // Dedup secundário por titulo+prazo — cobre o caso em que Flora cria um ID
-      // novo para a versão atualizada mas mantém o item original no mesmo array.
-      // Preferência: versão COM hora (mais completa) independente da ordem.
-      const porChave = new Map();
-      porId.forEach(t => {
-        const chave = (t.titulo || '').toLowerCase().trim() + '|' + (t.prazo || '');
-        const existente = porChave.get(chave);
-        if (!existente || (t.hora && !existente.hora)) {
-          porChave.set(chave, t);
+    // BUG-ESTRUTURAL-2: normaliza alteracoes[] — IDs e campos default por tipo de operação
+    let alteracoes = null;
+    if (Array.isArray(parsed.alteracoes) && parsed.alteracoes.length > 0) {
+      alteracoes = parsed.alteracoes.map((alt, i) => {
+        if (alt.op === 'add_compromisso' && alt.compromisso) {
+          return {
+            ...alt,
+            compromisso: {
+              ...alt.compromisso,
+              id: alt.compromisso.id || `comp-${Date.now()}-${i}`,
+              categoria: alt.compromisso.categoria || 'compromisso',
+              recorrencia: alt.compromisso.recorrencia || null,
+            },
+          };
         }
+        if (alt.op === 'add_tarefa' && alt.tarefa) {
+          return {
+            ...alt,
+            tarefa: {
+              ...alt.tarefa,
+              id: alt.tarefa.id || `tarefa-${Date.now()}-${i}`,
+              categoria: alt.tarefa.categoria || (alt.tarefa.prazo || alt.tarefa.blocoSugerido ? 'tarefa' : 'lembrete'),
+              recorrencia: alt.tarefa.recorrencia || null,
+              concluida: alt.tarefa.concluida || false,
+            },
+          };
+        }
+        if (alt.op === 'inicializar') {
+          const comps = (alt.compromissos || []).map((c, ci) => ({
+            ...c,
+            id: c.id || `comp-${Date.now()}-${ci}`,
+            categoria: c.categoria || 'compromisso',
+            recorrencia: c.recorrencia || null,
+          }));
+          const processadas = (alt.tarefas || []).map((t, ti) => ({
+            ...t,
+            id: t.id || `tarefa-${Date.now()}-${ti}`,
+            categoria: t.categoria || (t.prazo || t.blocoSugerido ? 'tarefa' : 'lembrete'),
+            recorrencia: t.recorrencia || null,
+            concluida: t.concluida || false,
+          }));
+          const porId = new Map(processadas.map(t => [t.id, t]));
+          const porChave = new Map();
+          porId.forEach(t => {
+            const chave = (t.titulo || '').toLowerCase().trim() + '|' + (t.prazo || '');
+            const existente = porChave.get(chave);
+            if (!existente || (t.hora && !existente.hora)) porChave.set(chave, t);
+          });
+          return { ...alt, compromissos: comps, tarefas: Array.from(porChave.values()) };
+        }
+        return alt;
       });
-
-      parsed.plano.tarefas = Array.from(porChave.values());
     }
 
-    // Normaliza compromissos (categoria default + IDs)
-    if (parsed.plano?.compromissos) {
-      parsed.plano.compromissos = parsed.plano.compromissos.map((c, i) => ({
-        ...c,
-        id: c.id || `comp-${Date.now()}-${i}`,
-        categoria: c.categoria || 'compromisso',
-        recorrencia: c.recorrencia || null,
-      }));
+    // Retrocompatibilidade: Flora retornou "plano" antigo em vez de "alteracoes"
+    let _planoLegado = null;
+    if (!alteracoes && parsed.plano) {
+      console.warn('[Flora] Resposta legada: plano completo recebido em vez de alteracoes[]');
+      _planoLegado = parsed.plano;
     }
 
     // Valida e normaliza quickReplies (array de strings curtas, máx 4)
@@ -1212,7 +1284,8 @@ function parseFloraResponse(rawText) {
     return {
       mensagem: parsed.mensagem || 'Algo deu errado na resposta.',
       modo: parsed.modo || 'conversa',
-      plano: parsed.plano || null,
+      alteracoes,
+      _planoLegado,
       perguntaFeita: parsed.perguntaFeita || null,
       quickReplies,
       memoriaUpdate,
@@ -1224,7 +1297,8 @@ function parseFloraResponse(rawText) {
     return {
       mensagem: 'Tive um problema técnico aqui. Pode repetir o que disse?',
       modo: 'conversa',
-      plano: null,
+      alteracoes: null,
+      _planoLegado: null,
       perguntaFeita: null,
       quickReplies: ['Repetir mensagem'],
       memoriaUpdate: null,

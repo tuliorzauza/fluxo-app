@@ -483,3 +483,70 @@ Badge convertido para `<button>` com popover React mostrando breakdown tarefas v
 3. `useEffect` de verificação periódica passa `config` nas chamadas: `verificarNotificacoes(plano, memoria, config)`. Dependency array atualizado com `config`.
 
 **Arquivo:** `client/src/App.jsx`
+
+---
+
+### [2026-05-27] BUG-032 — ALTURA_TOTAL 60px curta após fix do BUG-028 (23h cortado)
+
+**Sintoma:** Eventos às 23h não aparecem no calendário (RoutineView). O label "23h" aparece na coluna de horas (fix do BUG-028 estava correto), mas qualquer evento agendado para as 23h fica invisível.
+
+**Causa raiz:** O fix do BUG-028 adicionou `+1` ao array `horas` (linha 83 de RoutineView.jsx), mas não atualizou `ALTURA_TOTAL`. O container do calendário tem `height: ALTURA_TOTAL = (HORA_FIM - HORA_INI) * ALTURA_HORA = 22 * 60 = 1320px`. Um evento às 23h tem `topo = ((23*60 - 1*60) / 60) * 60 = 1320px` — exatamente igual à altura do container. O container tem `overflow-hidden` (via classe `card !p-0 overflow-hidden`), então o evento começa na borda e é 100% cortado.
+
+A condição de filtro (`topo > ALTURA_TOTAL`) usa `>` estrito, então `1320 > 1320 = false` — o evento passa no filtro mas ainda fica invisível por overflow.
+
+**Impacto:** Eventos criados às 23h (ex: atividades noturnas, jogos, estudos tardios) nunca aparecem no calendário. Bug silencioso — não há erro no console.
+
+**Solução:** Linha 22 de `RoutineView.jsx`:
+```js
+// DE:
+const ALTURA_TOTAL = (HORA_FIM - HORA_INI) * ALTURA_HORA;
+// PARA:
+const ALTURA_TOTAL = (HORA_FIM - HORA_INI + 1) * ALTURA_HORA; // 1380px
+```
+
+**Colateral descoberto:** `ModalAdicionar` (linha 408) usa `new Date().toISOString().split('T')[0]` para o campo `min` do date picker — mesmo bug UTC do BUG-031. Corrigir junto.
+
+**Arquivo:** `client/src/components/routine/RoutineView.jsx`
+
+---
+
+### [2026-05-27] BUG-033 — Eventos cruzando meia-noite (23h→1h) não renderizam
+
+**Sintoma:** Evento "Jogar com primo: 23h às 1h da manhã" não aparece no calendário.
+
+**Causa raiz:** Dois problemas independentes:
+
+1. **Duração não calculada para crossing-midnight:** O calendário usa `duracaoMinutos(item, 60)` que lê `item.duracao` (minutos numérico). Se `duracao` não estiver salvo explicitamente e o campo `blocoSugerido` contiver "23h-1h", a função testa `if (fim > ini)` = `60 > 1380 = false` → retorna fallback de 60min. `ModalAdicionar.salvar()` calcula `diff = 60 - 1380 = -1320 < 0` → não entra no `if (diff > 0)` → `duracao` fica em 60 (default). O bloco aparece como evento de 1h começando às 23h.
+
+2. **Topo na borda do container (agravado por BUG-032):** Independente de `duracao`, o evento tem `topo = 1320px` = borda do container de 1320px → cortado por `overflow-hidden`. Mesmo após corrigir BUG-032 (container 1380px), o evento ainda começa em `top: 1320px` e teria apenas 60px de espaço (até a nova borda em 1380px) — evento de 2h ficaria truncado.
+
+3. **Sem tratamento de crossing-midnight:** Não existe nenhuma lógica para dividir o bloco em "parte antes da meia-noite" + "parte depois" no dia seguinte.
+
+**Impacto:** Qualquer evento que começa antes da meia-noite e termina depois fica invisível no calendário. Sem erro no console.
+
+**Solução (duas frentes):**
+- **Frente A (duração):** Em `ModalAdicionar.salvar()` e em `duracaoMinutos`, detectar `horaFim < hora` (crossing midnight) e calcular `duracao = (24*60 - minutosIni) + minutesFim`. Flora deve sempre gerar `duracao` em minutos no JSON.
+- **Frente B (renderização):** Para eventos onde `minutosIni + duracao > HORA_FIM * 60`, truncar a altura no limite do container e adicionar indicador visual "→ continua". O bloco do dia seguinte não precisa ser implementado agora.
+
+**Dependência:** BUG-032 deve ser corrigido primeiro (container com altura correta).
+
+**Arquivos:** `client/src/components/routine/RoutineView.jsx`, `client/src/utils/calendarUtils.js`
+
+---
+
+### [2026-05-27] BUG-ESTRUTURAL-2 — Flora retornava plano completo a cada resposta ✅ RESOLVIDO
+
+**Sintoma/Risco:** Flora reescrevia o plano inteiro em cada resposta → risco de perda de dados (campos omitidos, merge duplicado no frontend e backend), e dificuldade de rastrear o que mudou exatamente.
+
+**Causa raiz:** Arquitetura original: Flora gerava `"plano": {...}` completo. Backend e frontend faziam merge paralelo e redundante, com risco de divergência.
+
+**Solução aplicada (2026-05-27):**
+- Flora agora retorna `"alteracoes": [...]` — array de diffs atômicos (`add_compromisso`, `update_compromisso`, `delete_compromisso`, `add_excecao`, `add_tarefa`, `update_tarefa`, `delete_tarefa`, `set_diagnostico`, `inicializar`)
+- Backend carrega plano autoritativo do Supabase, aplica `aplicarDiffs()` e salva resultado
+- Frontend simplificado: recebe plano já correto do backend, sem lógica de merge
+- Retrocompatibilidade: se Flora retornar `"plano"` antigo (legado), `_planoLegado` é tratado como fallback
+
+**Arquivos alterados:**
+- `server/services/flora.js`: schema de diffs documentado no topo, `parseFloraResponse()` extrai `alteracoes` + `_planoLegado`, FORMATO DE RESPOSTA reescrito
+- `server/index.js`: `aplicarDiffs()` adicionada, `posProcessar()` reescrita para usar `planoDoSupabase`, ambos os endpoints carregam plano do Supabase antes de processar
+- `client/src/App.jsx`: `setPlano` simplificado (sem merge), `preservarEstadosTarefas` e `mergeCompromissos` removidos do import

@@ -169,6 +169,72 @@ function sanitizarTarefas(tarefas) {
   });
 }
 
+// ── BUG-ESTRUTURAL-2: Aplica diffs da Flora sobre o plano atual ───────────────
+function aplicarDiffs(planoAtual, alteracoes) {
+  if (!alteracoes || alteracoes.length === 0) return planoAtual;
+  let plano = {
+    ...planoAtual,
+    compromissos: [...(planoAtual.compromissos || [])],
+    tarefas: [...(planoAtual.tarefas || [])],
+  };
+  for (const alt of alteracoes) {
+    switch (alt.op) {
+      case 'inicializar':
+        plano = {
+          ...plano,
+          compromissos: alt.compromissos || [],
+          tarefas: alt.tarefas || [],
+        };
+        break;
+      case 'add_compromisso':
+        if (alt.compromisso && !plano.compromissos.some(c => c.id === alt.compromisso.id)) {
+          plano.compromissos = [...plano.compromissos, alt.compromisso];
+        }
+        break;
+      case 'update_compromisso':
+        plano.compromissos = plano.compromissos.map(c =>
+          c.id === alt.id ? { ...c, ...alt.campos } : c
+        );
+        break;
+      case 'delete_compromisso':
+        plano.compromissos = plano.compromissos.filter(c => c.id !== alt.id);
+        break;
+      case 'add_excecao':
+        plano.compromissos = plano.compromissos.map(c => {
+          if (c.id !== alt.id) return c;
+          const excecoes = [...(c.excecoes || [])];
+          if (!excecoes.includes(alt.data)) excecoes.push(alt.data);
+          return { ...c, excecoes };
+        });
+        break;
+      case 'add_tarefa':
+        if (alt.tarefa && !plano.tarefas.some(t => t.id === alt.tarefa.id)) {
+          plano.tarefas = [...plano.tarefas, alt.tarefa];
+        }
+        break;
+      case 'update_tarefa':
+        plano.tarefas = plano.tarefas.map(t =>
+          t.id === alt.id ? { ...t, ...alt.campos } : t
+        );
+        break;
+      case 'delete_tarefa':
+        plano.tarefas = plano.tarefas.filter(t => t.id !== alt.id);
+        break;
+      case 'set_diagnostico':
+        plano = {
+          ...plano,
+          diagnostico: alt.diagnostico ?? plano.diagnostico,
+          proximaAcao: alt.proximaAcao ?? plano.proximaAcao,
+          sugestaoPratica: alt.sugestaoPratica ?? plano.sugestaoPratica,
+        };
+        break;
+      default:
+        console.warn('[DIFFS] operação desconhecida:', alt.op);
+    }
+  }
+  return plano;
+}
+
 // ── BUG-FLORA-DIAS: Valida diasSemana de compromissos recorrentes ─────────────
 // Flora às vezes alucina diasSemana errado (ex: [6] para "segunda").
 // Esta função restaura diasSemana original quando Flora mudou sem pedido explícito.
@@ -197,24 +263,35 @@ function validarDiasSemana(novoPlano, planoAnterior) {
 }
 
 // ── Pós-processamento da resposta da Flora ────────────────────────────────────
-function posProcessar({ rawText, planoAtual, messages, memoria }) {
-  let { mensagem, modo, plano, perguntaFeita, quickReplies, memoriaUpdate, eventoGamificacao } = parseFloraResponse(rawText);
+function posProcessar({ rawText, planoDoSupabase, messages, memoria }) {
+  let { mensagem, modo, alteracoes, _planoLegado, perguntaFeita, quickReplies, memoriaUpdate, eventoGamificacao } = parseFloraResponse(rawText);
 
   // BUG-026: ajustarDatasFuturas removida do fluxo de chat para não ressuscitar eventos expirados.
   // Flora gera datas corretas via REGRA DE DATAS. ajustarData() ainda converte aliases textuais.
-  // ajustarDatasFuturas pode ser chamada pontualmente em migrações de dados se necessário.
 
-  // BUG-FLORA-DIAS: restaura diasSemana original se Flora os alterou sem pedido explícito
-  if (plano && planoAtual) {
-    plano = validarDiasSemana(plano, planoAtual);
+  // BUG-ESTRUTURAL-2: aplica diffs sobre plano carregado do Supabase
+  const planoBase = planoDoSupabase || { compromissos: [], tarefas: [] };
+
+  let plano = null;
+  if (alteracoes) {
+    // Caminho normal: aplica diffs atômicos
+    plano = aplicarDiffs(planoBase, alteracoes);
+  } else if (_planoLegado) {
+    // Retrocompatibilidade: Flora retornou plano completo (comportamento antigo)
+    plano = _planoLegado;
   }
 
-  if (plano?.tarefas) {
-    plano.tarefas = sanitizarTarefas(plano.tarefas);
-  }
+  if (plano) {
+    // BUG-FLORA-DIAS: restaura diasSemana original se Flora os alterou sem pedido explícito
+    plano = validarDiasSemana(plano, planoBase);
 
-  if (plano?.tarefas && planoAtual?.tarefas) {
-    plano.tarefas = preservarEstadosTarefas(planoAtual.tarefas, plano.tarefas);
+    if (plano.tarefas) {
+      plano.tarefas = sanitizarTarefas(plano.tarefas);
+    }
+
+    if (plano.tarefas && planoBase.tarefas) {
+      plano.tarefas = preservarEstadosTarefas(planoBase.tarefas, plano.tarefas);
+    }
   }
 
   // Mescla atualização de memória
@@ -318,8 +395,17 @@ app.post('/api/processar/stream', async (req, res) => {
   };
 
   try {
+    // BUG-ESTRUTURAL-2: carrega plano autoritativo do Supabase para aplicar diffs
+    let planoDoSupabase = planoAtual; // fallback se Supabase falhar
+    try {
+      const dadosSupabase = await carregarDadosUsuario(userId);
+      if (dadosSupabase?.plano) planoDoSupabase = dadosSupabase.plano;
+    } catch (errSupabase) {
+      console.warn('[SSE] Falha ao carregar plano do Supabase, usando planoAtual do frontend:', errSupabase.message);
+    }
+
     const { messages, systemPrompt, perguntaProfunda } = await processarMensagem({
-      input, historicoMensagens, dataHoraAtual, perfil, planoAtual, memoria,
+      input, historicoMensagens, dataHoraAtual, perfil, planoAtual: planoDoSupabase, memoria,
     });
 
     let fullText = '';
@@ -345,7 +431,7 @@ app.post('/api/processar/stream', async (req, res) => {
     const {
       mensagem, modo, plano, quickReplies, perguntaFeita,
       memoriaAtualizada, historicoAtualizado,
-    } = posProcessar({ rawText: fullText, planoAtual, messages, memoria });
+    } = posProcessar({ rawText: fullText, planoDoSupabase, messages, memoria });
 
     sendEvent({
       type: 'done',
@@ -398,8 +484,17 @@ app.post('/api/processar', autenticarUsuario, async (req, res) => {
       return res.status(400).json({ erro: 'Input vazio' });
     }
 
+    // BUG-ESTRUTURAL-2: carrega plano autoritativo do Supabase para aplicar diffs
+    let planoDoSupabase = planoAtual; // fallback se Supabase falhar
+    try {
+      const dadosSupabase = await carregarDadosUsuario(req.userId);
+      if (dadosSupabase?.plano) planoDoSupabase = dadosSupabase.plano;
+    } catch (errSupabase) {
+      console.warn('[PROCESSAR] Falha ao carregar plano do Supabase, usando planoAtual do frontend:', errSupabase.message);
+    }
+
     const { messages, systemPrompt, perguntaProfunda } = await processarMensagem({
-      input, historicoMensagens, dataHoraAtual, perfil, planoAtual, memoria,
+      input, historicoMensagens, dataHoraAtual, perfil, planoAtual: planoDoSupabase, memoria,
     });
 
     const response = await anthropic.messages.create({
@@ -413,7 +508,7 @@ app.post('/api/processar', autenticarUsuario, async (req, res) => {
     const {
       mensagem, modo, plano, quickReplies, perguntaFeita,
       memoriaAtualizada, historicoAtualizado,
-    } = posProcessar({ rawText, planoAtual, messages, memoria });
+    } = posProcessar({ rawText, planoDoSupabase, messages, memoria });
 
     res.json({
       mensagem, modo, plano,
