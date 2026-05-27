@@ -1,37 +1,8 @@
 import React, { useEffect, useMemo } from 'react';
 import { Zap } from 'lucide-react';
+import { getCompromissosDoDia, hojeYMD, amanhaYMD } from '../utils/planoUtils';
 
 const CACHE_KEY = 'fluxo_proxima_acao';
-
-// BUG-031: toISOString() retorna UTC — após 21h BRT o dia já avança incorretamente.
-// toLocaleDateString('sv-SE', ...) retorna YYYY-MM-DD no fuso de Brasília.
-function hojeYMD() {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-}
-
-function amanhaYMD() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-}
-
-function diaSemanaDe(dataYMD) {
-  return new Date(dataYMD + 'T12:00:00').getDay();
-}
-
-// Filtra compromissos que ocorrem em uma data específica (considera recorrência)
-function compromissosNoDia(comproms, dataYMD) {
-  const dia = diaSemanaDe(dataYMD);
-  return (comproms || []).filter(c => {
-    if (!c.titulo || c.concluida) return false;
-    const excecoes = c.recorrencia?.excecoes || [];
-    if (excecoes.includes(dataYMD)) return false;
-    if (!c.recorrencia) return c.data === dataYMD;
-    if (c.recorrencia.tipo === 'diaria') return true;
-    if (c.recorrencia.tipo === 'semanal') return (c.recorrencia.diasSemana || []).includes(dia);
-    return false;
-  });
-}
 
 function horaParaMinutos(hora) {
   if (!hora) return null;
@@ -45,18 +16,28 @@ function blocoParaMinutos(bloco) {
   return m ? parseInt(m[1]) * 60 + (parseInt(m[2]) || 0) : null;
 }
 
-function calcularProxima(plano) {
+// Hora atual em minutos desde meia-noite, calculada no fuso de Brasília
+function horaAtualBRT() {
+  const agora = new Date();
+  return parseInt(agora.toLocaleTimeString('pt-BR', { hour: '2-digit', timeZone: 'America/Sao_Paulo' })) * 60
+    + parseInt(agora.toLocaleTimeString('pt-BR', { minute: '2-digit', timeZone: 'America/Sao_Paulo' }));
+}
+
+// comprHoje: lista já filtrada pelo Dashboard via getCompromissosDoDia (fonte única de verdade)
+function calcularProxima(plano, comprHoje) {
   if (!plano) return null;
 
   const hoje   = hojeYMD();
   const amanha = amanhaYMD();
-  const agoraMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const agoraMin = horaAtualBRT();
 
-  // Compromissos de hoje
-  const comprHoje = compromissosNoDia(plano.compromissos, hoje).map(c => ({
-    titulo: c.titulo,
-    min: horaParaMinutos(c.hora) ?? 9999,
-  }));
+  // Compromissos de hoje (da prop centralizada, excluindo concluídos)
+  const itemsCompHoje = (comprHoje || [])
+    .filter(c => !c.concluida)
+    .map(c => ({
+      titulo: c.titulo,
+      min: horaParaMinutos(c.hora) ?? 9999,
+    }));
 
   // Tarefas com prazo hoje
   const tarHoje = (plano.tarefas || [])
@@ -66,14 +47,15 @@ function calcularProxima(plano) {
       min: horaParaMinutos(t.hora) ?? blocoParaMinutos(t.blocoSugerido) ?? 9999,
     }));
 
-  const itensHoje = [...comprHoje, ...tarHoje].sort((a, b) => a.min - b.min);
+  const itensHoje = [...itemsCompHoje, ...tarHoje].sort((a, b) => a.min - b.min);
 
   // Primeiro item ainda por vir (30 min de tolerância)
   const proximo = itensHoje.find(i => i.min >= agoraMin - 30) || itensHoje[0];
   if (proximo) return proximo.titulo;
 
-  // Nada hoje → primeiro item de amanhã
-  const comprAmanha = compromissosNoDia(plano.compromissos, amanha)
+  // Nada hoje → primeiro item de amanhã (getCompromissosDoDia garante consistência)
+  const comprAmanha = getCompromissosDoDia({ compromissos: plano.compromissos }, amanha)
+    .filter(c => !c.concluida)
     .map(c => ({ titulo: c.titulo, min: horaParaMinutos(c.hora) ?? 9999 }))
     .sort((a, b) => a.min - b.min);
 
@@ -102,9 +84,9 @@ function salvarCacheProxima(texto) {
   } catch {}
 }
 
-export default function NextActionCard({ plano, proximaAcao: proximaAcaoFlora }) {
-  // Computa a partir do plano real, filtrado por hoje
-  const calculada = useMemo(() => plano ? calcularProxima(plano) : null, [plano]);
+export default function NextActionCard({ plano, proximaAcao: proximaAcaoFlora, compromissosDoDia = [] }) {
+  // Computa a partir dos compromissos do dia já filtrados pelo Dashboard (fonte única)
+  const calculada = useMemo(() => plano ? calcularProxima(plano, compromissosDoDia) : null, [plano, compromissosDoDia]);
 
   // Persiste quando muda (ex: tarefa marcada como feita)
   useEffect(() => {

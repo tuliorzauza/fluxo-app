@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, ChevronRight } from 'lucide-react';
 
-// Retorna todos os compromissos que ocorrem hoje
-function compromissosDoDia(compromissos) {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const hojeStr = hoje.toISOString().split('T')[0];
-  const diaSemana = hoje.getDay();
-
-  return (compromissos || []).filter(c => {
-    const excecoes = c.recorrencia?.excecoes || [];
-    if (excecoes.includes(hojeStr)) return false;
-    if (!c.recorrencia) return c.data === hojeStr;
-    if (c.recorrencia.tipo === 'diaria') return true;
-    if (c.recorrencia.tipo === 'semanal') return (c.recorrencia.diasSemana || []).includes(diaSemana);
-    return false;
-  }).filter(c => c.hora); // só com horário definido
-}
-
 // Converte "HH:MM" em minutos desde meia-noite
 function hhmm(str) {
   if (!str) return null;
@@ -83,7 +66,7 @@ function labelDuracao(min, tipo) {
   return tipo === 'bloco_longo' ? `🕐 ${durStr} livres` : `⚡ ~${durStr} livres`;
 }
 
-export default function MicrointervalosCard({ plano, onAbrirChat }) {
+export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDoDia = [] }) {
   const [agora, setAgora] = useState(new Date());
 
   useEffect(() => {
@@ -91,12 +74,16 @@ export default function MicrointervalosCard({ plano, onAbrirChat }) {
     return () => clearInterval(intervalo);
   }, []);
 
-  const hoje = compromissosDoDia(plano?.compromissos);
-  const todas = calcularLacunas(hoje);
+  // Usa prop centralizada do Dashboard — já filtrada com fuso BRT correto
+  // Filtra apenas compromissos com horário definido (necessário para calcular lacunas)
+  const comHora = (compromissosDoDia || []).filter(c => c.hora);
+  const todas = calcularLacunas(comHora);
 
   if (todas.length === 0) return null;
 
-  const horaAtual = agora.getHours() * 60 + agora.getMinutes();
+  // Hora atual no fuso de Brasília (BRT, UTC-3)
+  const horaAtual = parseInt(agora.toLocaleTimeString('pt-BR', { hour: '2-digit', timeZone: 'America/Sao_Paulo' })) * 60
+    + parseInt(agora.toLocaleTimeString('pt-BR', { minute: '2-digit', timeZone: 'America/Sao_Paulo' }));
   // BUG-029: filtro anterior usava l.inicio > horaAtual + 15, o que escondia lacunas
   // que já começaram mas ainda têm tempo útil restante (ex: bloco 9h-11h às 10h30).
   // Correção: filtrar por l.fim — a lacuna é relevante se ainda termina no futuro.

@@ -2,6 +2,54 @@
  * planoUtils.js — Utilitários para manipulação do plano da Flora
  */
 
+// ── Helpers de fuso horário (BRT, UTC-3) ─────────────────────────────────────
+// Usadas por todos os cards — fonte única de verdade para "hoje" e "amanhã".
+// toLocaleDateString('sv-SE') retorna YYYY-MM-DD; timeZone garante BRT correto
+// mesmo quando o browser/servidor está em UTC (ex: Railway, alguns usuários).
+export function hojeYMD() {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+}
+
+export function amanhaYMD() {
+  const amanha = new Date();
+  amanha.setDate(amanha.getDate() + 1);
+  return amanha.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+}
+
+// ── Fonte de verdade centralizada para compromissos do dia ──────────────────
+// Usada pelo Dashboard para calcular UMA VEZ e distribuir para todos os cards.
+// dataStr deve ser 'YYYY-MM-DD' no fuso de Brasília (usar hojeYMD() ou amanhaYMD()).
+export function getCompromissosDoDia(plano, dataStr) {
+  if (!plano?.compromissos?.length || !dataStr) return [];
+
+  const diaSemana = new Date(dataStr + 'T12:00:00').getDay();
+
+  const resultado = plano.compromissos.filter(c => {
+    if (!c?.titulo) return false;
+
+    const excecoes = c.recorrencia?.excecoes || [];
+    if (excecoes.includes(dataStr)) return false;
+
+    // Sem recorrência: compromisso pontual — verifica campo data
+    if (!c.recorrencia) return c.data === dataStr;
+
+    // Recorrência diária: aparece todo dia
+    if (c.recorrencia.tipo === 'diaria') return true;
+
+    // Recorrência semanal: verifica diasSemana
+    if (c.recorrencia.tipo === 'semanal') {
+      return (c.recorrencia.diasSemana || []).includes(diaSemana);
+    }
+
+    return false;
+  });
+
+  // Ordenar por hora (sem hora vai pro final)
+  return resultado.sort((a, b) =>
+    (a.hora || '99:99').localeCompare(b.hora || '99:99')
+  );
+}
+
 /**
  * BUG-025 — Merge defensivo de compromissos.
  * Ao aplicar novoPlano da Flora, preserva excecoes de recorrência de itens anteriores.

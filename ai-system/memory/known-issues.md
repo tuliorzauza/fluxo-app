@@ -553,6 +553,29 @@ const ALTURA_TOTAL = (HORA_FIM - HORA_INI + 1) * ALTURA_HORA; // 1380px
 
 ---
 
+### [2026-05-27] BUG-ESTRUTURAL-1 — Filtragem de compromissos do dia duplicada em 3 cards ✅ RESOLVIDO
+
+**Sintoma:** TaskList, NextActionCard e MicrointervalosCard cada um filtrava independentemente os compromissos do dia. Resultado: os três podiam mostrar dados inconsistentes entre si — especialmente após 21h BRT (UTC bug em MicrointervalosCard usava `toISOString().split('T')[0]`).
+
+**Causa raiz:** Sem fonte de verdade centralizada para "compromissos de hoje". MicrointervalosCard tinha bug de fuso (UTC), NextActionCard tinha lógica própria `compromissosNoDia()`, TaskList tinha `proximaOcorrencia()` própria.
+
+**Solução aplicada (2026-05-27):**
+- `getCompromissosDoDia(plano, dataStr)` adicionada em `planoUtils.js` — superset de todas as lógicas dos 3 cards
+- `hojeYMD()` e `amanhaYMD()` centralizadas em `planoUtils.js` com fuso `America/Sao_Paulo`
+- Dashboard calcula `compromissosDoDia` uma vez e distribui como prop para os 3 cards
+- TaskList: usa `compromissosDoDia` prop para HOJE, `getCompromissosDoDia` para AMANHÃ, mantém `proximaOcorrencia` para FUTURO
+- NextActionCard: remove `compromissosNoDia()`, usa `compromissosDoDia` prop, fixa cálculo de hora BRT
+- MicrointervalosCard: remove `compromissosDoDia()` local (tinha UTC bug), usa prop, fixa cálculo de hora BRT
+
+**Arquivos alterados:**
+- `client/src/utils/planoUtils.js`: `hojeYMD`, `amanhaYMD`, `getCompromissosDoDia` adicionadas
+- `client/src/components/dashboard/Dashboard.jsx`: centraliza filtragem e distribui via props
+- `client/src/components/TaskList.jsx`: remove local hojeYMD/amanhaYMD, usa prop para HOJE
+- `client/src/components/NextActionCard.jsx`: remove compromissosNoDia(), usa prop, BRT fix
+- `client/src/components/dashboard/MicrointervalosCard.jsx`: remove função local, usa prop, BRT fix
+
+---
+
 ### [2026-05-27] BUG-FLORA-LEGADO — System prompt com instruções contraditórias sobre formato de resposta
 
 **Sintoma:** Flora retorna plano completo em vez de `alteracoes[]`, ignorando o FORMATO DE RESPOSTA novo. O calendário não atualiza corretamente.

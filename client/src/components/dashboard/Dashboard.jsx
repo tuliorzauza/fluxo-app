@@ -10,7 +10,7 @@ import GamificacaoCard     from '../gamificacao/GamificacaoCard';
 import BadgesScreen        from '../gamificacao/BadgesScreen';
 import HistoricoPontos     from '../gamificacao/HistoricoPontos';
 import MicrointervalosCard from './MicrointervalosCard';
-import { calcularScore }   from '../../utils/planoUtils';
+import { calcularScore, getCompromissosDoDia, hojeYMD } from '../../utils/planoUtils';
 
 export default function Dashboard({
   plano,
@@ -42,6 +42,10 @@ export default function Dashboard({
   const planoComScore = plano ? calcularScore(plano) : null;
   const diagnostico   = planoComScore?.diagnostico || null;
 
+  // Filtragem centralizada — calculada UMA vez e distribuída para todos os cards
+  const hoje = hojeYMD();
+  const compromissosDoDia = planoComScore ? getCompromissosDoDia(planoComScore, hoje) : [];
+
   // No Modo Caos: mostra apenas TaskList filtrada com máx 3 itens
   if (modoCaos && planoComScore) {
     const tarefasCaos = (planoComScore.tarefas || [])
@@ -59,6 +63,7 @@ export default function Dashboard({
         <TaskList
           tarefas={tarefasCaos}
           compromissos={[]}
+          compromissosDoDia={[]}
           onToggle={onToggleTarefa}
         />
         <p className="text-center text-[11px] text-zinc-700 pt-2">
@@ -84,13 +89,13 @@ export default function Dashboard({
       {planoComScore && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <EstadoSemana plano={planoComScore} onVerPlano={onVerPlano} />
-          <NextActionCard plano={planoComScore} proximaAcao={planoComScore.proximaAcao} />
+          <NextActionCard plano={planoComScore} proximaAcao={planoComScore.proximaAcao} compromissosDoDia={compromissosDoDia} />
         </div>
       )}
 
       {/* ── Momentos livres hoje ────────────────────────────────────────── */}
       {planoComScore && (
-        <MicrointervalosCard plano={planoComScore} onAbrirChat={onVerPlano} />
+        <MicrointervalosCard plano={planoComScore} onAbrirChat={onVerPlano} compromissosDoDia={compromissosDoDia} />
       )}
 
       {/* ── Visão semanal colapsável ────────────────────────────────────── */}
@@ -126,6 +131,7 @@ export default function Dashboard({
           <TaskList
             tarefas={planoComScore.tarefas || []}
             compromissos={planoComScore.compromissos || []}
+            compromissosDoDia={compromissosDoDia}
             onToggle={onToggleTarefa}
           />
           <DiagnosticCard diagnostico={diagnostico} />

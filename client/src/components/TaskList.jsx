@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Circle, Clock, Calendar, ChevronDown } from 'lucide-react';
 import { getCategoria } from '../utils/categorias';
+import { getCompromissosDoDia, hojeYMD, amanhaYMD } from '../utils/planoUtils';
 
 const PRIORIDADE_CONFIG = {
   alta:  { label: 'Alta',  classe: 'tag-alta',  ordem: 0 },
@@ -9,16 +10,7 @@ const PRIORIDADE_CONFIG = {
 };
 
 // ── Helpers de data ───────────────────────────────────────────────────────────
-// BUG-031: toISOString() retorna UTC — após 21h BRT o dia já avança no servidor Railway.
-// toLocaleDateString('sv-SE', ...) retorna YYYY-MM-DD no fuso de Brasília.
-function hojeYMD() {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-}
-function amanhaYMD() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-}
+// hojeYMD() e amanhaYMD() importadas de planoUtils — fonte única de verdade com fuso BRT.
 
 function labelData(prazo, hora) {
   if (!prazo) return null;
@@ -72,8 +64,9 @@ function proximaOcorrencia(c) {
 }
 
 // ── Normaliza compromisso para o mesmo formato de tarefa ─────────────────────
-function normalizarCompromisso(c) {
-  const prazo = proximaOcorrencia(c);
+// prazoOverride: quando o bucket já sabe a data (hoje/amanhã), evita chamar proximaOcorrencia
+function normalizarCompromisso(c, prazoOverride = null) {
+  const prazo = prazoOverride !== null ? prazoOverride : proximaOcorrencia(c);
   let blocoSugerido = null;
   if (c.hora) {
     if (c.duracao) {
@@ -239,7 +232,7 @@ function GrupoLabel({ label }) {
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export default function TaskList({ tarefas = [], compromissos = [], onToggle }) {
+export default function TaskList({ tarefas = [], compromissos = [], onToggle, compromissosDoDia = [] }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const toggleExpand = (id) => setExpandedId(prev => prev === id ? null : id);
@@ -254,27 +247,37 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle }) 
     .filter(t => t.tipo !== 'flora')
     .map(t => ({ ...t, _viewId: t.id, concluida: t.concluida || !!concluidasExt[t.id] }));
 
-  // BUG-027: filtrar compromissos relevantes ANTES de normalizar.
-  // Sem esse filtro, compromissos pontuais expirados (data passada) aparecem no Painel do Dia
-  // porque normalizarCompromisso() os processa e grupoData() pode colocá-los em "Hoje" ou "Atrasado".
-  const hojeStr = hojeYMD();
-  const compromissosRelevantes = compromissos.filter(c => {
-    if (!c.titulo) return false;
-    // Compromisso recorrente — sempre incluir (proximaOcorrencia calcula a próxima data)
-    if (c.recorrencia) return true;
-    // Compromisso pontual — incluir apenas se a data é hoje ou futura
-    if (c.data) {
-      return c.data >= hojeStr;
-    }
-    return false;
+  const hojeStr = hojeYMD();   // de planoUtils — BRT-safe
+  const amanhaStr = amanhaYMD();
+
+  // ── HOJE: usa prop centralizada do Dashboard (getCompromissosDoDia já filtra correto)
+  const idsHoje = new Set((compromissosDoDia || []).map(c => c.id));
+  const compHoje = (compromissosDoDia || []).map(c => {
+    const norm = normalizarCompromisso(c, hojeStr);
+    return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };
   });
 
-  // Normaliza compromissos para o mesmo formato (já inclui _viewId prefixado)
-  const compromissosNorm = compromissosRelevantes
+  // ── AMANHÃ: usa getCompromissosDoDia centralizado, sem duplicar lógica na mão
+  const compAmanh = getCompromissosDoDia({ compromissos }, amanhaStr)
+    .filter(c => !idsHoje.has(c.id))  // dedup: itens diários já estão em HOJE
     .map(c => {
-      const norm = normalizarCompromisso(c);
+      const norm = normalizarCompromisso(c, amanhaStr);
       return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };
     });
+  const idsAmanh = new Set(compAmanh.map(c => c.id));
+
+  // ── FUTURO: compromissos além de amanhã (mantém lógica existente via proximaOcorrencia)
+  const compFuturo = compromissos.filter(c => {
+    if (!c.titulo || idsHoje.has(c.id) || idsAmanh.has(c.id)) return false;
+    if (!c.recorrencia) return c.data && c.data > amanhaStr;
+    return true;  // recorrente: próxima ocorrência calculada por proximaOcorrencia
+  }).map(c => {
+    const norm = normalizarCompromisso(c);
+    return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };
+  }).filter(c => c.prazo && c.prazo > amanhaStr);
+
+  // Une os três buckets (dedup final por _viewId como segurança)
+  const compromissosNorm = [...compHoje, ...compAmanh, ...compFuturo];
 
   // Une tarefas + compromissos e deduplica por _viewId — evita duplicatas
   // quando o mesmo item chega pelas duas props ou o array é percorrido duas vezes.
