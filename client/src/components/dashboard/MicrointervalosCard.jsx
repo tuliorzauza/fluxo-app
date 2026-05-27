@@ -97,7 +97,10 @@ export default function MicrointervalosCard({ plano, onAbrirChat }) {
   if (todas.length === 0) return null;
 
   const horaAtual = agora.getHours() * 60 + agora.getMinutes();
-  const lacunas = todas.filter(l => l.inicio > horaAtual + 15);
+  // BUG-029: filtro anterior usava l.inicio > horaAtual + 15, o que escondia lacunas
+  // que já começaram mas ainda têm tempo útil restante (ex: bloco 9h-11h às 10h30).
+  // Correção: filtrar por l.fim — a lacuna é relevante se ainda termina no futuro.
+  const lacunas = todas.filter(l => l.fim > horaAtual + 15);
 
   return (
     <div className="card">
@@ -130,10 +133,24 @@ export default function MicrointervalosCard({ plano, onAbrirChat }) {
                   ? { background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }
                   : { background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)' }
                 }>
-                <div className="flex-shrink-0">
-                  <p className={`text-[11px] font-mono ${isLongo ? 'text-indigo-300' : 'text-blue-300'}`}>{fmt(l.inicio)}–{fmt(l.fim)}</p>
-                  <p className="text-[10px] text-zinc-500 font-semibold">{labelDuracao(l.duracao, l.tipo)}</p>
-                </div>
+                {/* BUG-029: exibe duração restante quando lacuna já começou */}
+                {(() => {
+                  const inicioEfetivo = Math.max(l.inicio, horaAtual);
+                  const duracaoRestante = l.fim - inicioEfetivo;
+                  const jaComecou = l.inicio < horaAtual;
+                  const tipoEfetivo = duracaoRestante > 120 ? 'bloco_longo' : l.tipo;
+                  return (
+                    <div className="flex-shrink-0">
+                      <p className={`text-[11px] font-mono ${isLongo ? 'text-indigo-300' : 'text-blue-300'}`}>
+                        {jaComecou ? `agora–${fmt(l.fim)}` : `${fmt(l.inicio)}–${fmt(l.fim)}`}
+                      </p>
+                      <p className="text-[10px] text-zinc-500 font-semibold">
+                        {labelDuracao(duracaoRestante, tipoEfetivo)}
+                        {jaComecou && <span className="text-zinc-600"> restantes</span>}
+                      </p>
+                    </div>
+                  );
+                })()}
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] text-zinc-400 leading-snug">
                     {l.antes ? `Antes de ${l.antes}` : 'Final do dia'}

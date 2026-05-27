@@ -9,12 +9,15 @@ const PRIORIDADE_CONFIG = {
 };
 
 // ── Helpers de data ───────────────────────────────────────────────────────────
+// BUG-031: toISOString() retorna UTC — após 21h BRT o dia já avança no servidor Railway.
+// toLocaleDateString('sv-SE', ...) retorna YYYY-MM-DD no fuso de Brasília.
 function hojeYMD() {
-  return new Date().toISOString().split('T')[0];
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 }
 function amanhaYMD() {
-  const d = new Date(); d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 }
 
 function labelData(prazo, hora) {
@@ -46,21 +49,22 @@ function prioOrdem(p) { return PRIORIDADE_CONFIG[p]?.ordem ?? 3; }
 
 // ── Próxima ocorrência de item recorrente ─────────────────────────────────────
 function proximaOcorrencia(c) {
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const hojeStr = hoje.toISOString().split('T')[0];
+  // BUG-031: usar fuso Brasília para evitar off-by-one após 21h BRT
+  const hojeStr = hojeYMD();
   if (!c.recorrencia) return c.data;
   const { tipo, diasSemana, excecoes = [] } = c.recorrencia;
+  const hojeDate = new Date(hojeStr + 'T12:00:00');
   if (tipo === 'diaria') {
     for (let i = 0; i <= 1; i++) {
-      const d = new Date(hoje); d.setDate(hoje.getDate() + i);
-      const s = d.toISOString().split('T')[0];
+      const d = new Date(hojeDate); d.setDate(hojeDate.getDate() + i);
+      const s = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       if (!excecoes.includes(s)) return s;
     }
   }
   if (tipo === 'semanal' && diasSemana?.length) {
     for (let i = 0; i <= 7; i++) {
-      const d = new Date(hoje); d.setDate(hoje.getDate() + i);
-      const s = d.toISOString().split('T')[0];
+      const d = new Date(hojeDate); d.setDate(hojeDate.getDate() + i);
+      const s = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       if (diasSemana.includes(d.getDay()) && !excecoes.includes(s)) return s;
     }
   }
@@ -253,8 +257,7 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle }) 
   // BUG-027: filtrar compromissos relevantes ANTES de normalizar.
   // Sem esse filtro, compromissos pontuais expirados (data passada) aparecem no Painel do Dia
   // porque normalizarCompromisso() os processa e grupoData() pode colocá-los em "Hoje" ou "Atrasado".
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const hojeStr = hoje.toISOString().split('T')[0];
+  const hojeStr = hojeYMD();
   const compromissosRelevantes = compromissos.filter(c => {
     if (!c.titulo) return false;
     // Compromisso recorrente — sempre incluir (proximaOcorrencia calcula a próxima data)

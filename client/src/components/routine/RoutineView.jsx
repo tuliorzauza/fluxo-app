@@ -78,7 +78,9 @@ export default function RoutineView({
       : `${ini.getDate()} ${MESES_LABEL[ini.getMonth()]} – ${fim.getDate()} ${MESES_LABEL[fim.getMonth()]}`;
   };
 
-  const horas = Array.from({ length: HORA_FIM - HORA_INI }, (_, i) => HORA_INI + i);
+  // BUG-028: length = HORA_FIM - HORA_INI gerava [1..22] — 23h nunca aparecia.
+  // +1 gera [1..23] incluindo o marcador final da linha das 23h.
+  const horas = Array.from({ length: HORA_FIM - HORA_INI + 1 }, (_, i) => HORA_INI + i);
 
   return (
     <div className="px-4 py-4 pb-8">

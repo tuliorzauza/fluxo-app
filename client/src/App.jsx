@@ -542,7 +542,18 @@ export default function App() {
                 const tarefasMerged = preservarEstadosTarefas(prevPlano?.tarefas || [], novoPlano.tarefas);
                 // BUG-025: merge defensivo preserva excecoes de recorrência que a Flora pode ter omitido
                 const compromissosMerged = mergeCompromissos(prevPlano?.compromissos, novoPlano.compromissos);
-                const planoAtualizado = { ...novoPlano, tarefas: tarefasMerged, compromissos: compromissosMerged };
+                // BUG-030: preserva diagnostico/proximaAcao/sugestaoPratica quando Flora
+                // retorna plano parcial (ex: só atualizou tarefas sem reanalisar a semana).
+                // ?? (nullish coalescing) garante que null/undefined do novoPlano usa o anterior,
+                // mas respeita valores falsy válidos (ex: score = 0).
+                const planoAtualizado = {
+                  ...novoPlano,
+                  tarefas: tarefasMerged,
+                  compromissos: compromissosMerged,
+                  diagnostico: novoPlano.diagnostico ?? prevPlano?.diagnostico,
+                  proximaAcao: novoPlano.proximaAcao ?? prevPlano?.proximaAcao,
+                  sugestaoPratica: novoPlano.sugestaoPratica ?? prevPlano?.sugestaoPratica,
+                };
                 ls_set(SK.plano, planoAtualizado);
                 return planoAtualizado;
               });

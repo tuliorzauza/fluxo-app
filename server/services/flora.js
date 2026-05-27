@@ -601,6 +601,27 @@ Tipos de recorrência:
   { "tipo": "semanal", "diasSemana": [1, 3, 5] }    // dias específicos (0=dom..6=sáb)
   { "tipo": "mensal", "diaDoMes": 15 }              // dia fixo do mês
 
+MAPEAMENTO OBRIGATÓRIO — diasSemana (referência absoluta, nunca inferir):
+  domingo   = 0
+  segunda   = 1
+  terça     = 2
+  quarta    = 3
+  quinta    = 4
+  sexta     = 5
+  sábado    = 6
+
+EXEMPLOS CANÔNICOS — use sempre esses números, sem exceção:
+  "segunda e quarta"          → diasSemana: [1, 3]
+  "segunda, quarta e sexta"   → diasSemana: [1, 3, 5]
+  "terça e quinta"            → diasSemana: [2, 4]
+  "segunda a sexta"           → diasSemana: [1, 2, 3, 4, 5]
+  "finais de semana"          → diasSemana: [0, 6]
+  "todo sábado"               → diasSemana: [6]
+  "todo domingo"              → diasSemana: [0]
+
+ERRO GRAVE: nunca use diasSemana: [6] para "segunda". Sempre verifique: domingo=0, sábado=6.
+Antes de retornar diasSemana, confirme mentalmente: "O número N corresponde ao dia pedido?"
+
 REGRA: itens recorrentes (rotina, fixo) DEVEM ter recorrencia preenchida.
 Sem isso, eles somem nas semanas seguintes.
 
@@ -728,26 +749,54 @@ OBRIGATÓRIO executar as DUAS ações simultaneamente no plano retornado:
 
 AÇÃO 1 — Adicionar exceção no item recorrente original:
   No objeto do compromisso recorrente, adicionar a data ORIGINAL em recorrencia.excecoes.
-  Ex: inglês toda sexta → adicionar a sexta desta semana em excecoes
-  { ...compromissoOriginal, recorrencia: { ...recorrencia, excecoes: [...excecoes, 'YYYY-MM-DD-data-original'] } }
+  Isso impede que o item apareça na data original (onde não vai mais acontecer).
 
 AÇÃO 2 — Criar novo item pontual para a nova data:
-  { ...compromissoOriginal, id: 'pontual-[titulo-simplificado]-[data-nova]',
-    recorrencia: null, data: 'YYYY-MM-DD-nova-data' }
-  → data calculada com o CÁLCULO OBRIGATÓRIO da REGRA DE DATAS acima
-  → sem recorrencia (é pontual — ocorre só naquele dia)
+  Novo objeto com id único, recorrencia: null, e data = nova data.
+  Todos os outros campos (titulo, hora, duracao, categoria) herdados do original.
 
-AMBAS as ações devem aparecer no plano retornado.
-Se apenas uma aparecer → bug de duplicação (sem excecao) ou desaparecimento (sem pontual) ocorre.
+EXEMPLO CONCRETO — "mova o inglês dessa sexta para quarta":
+  Situação: inglês recorrente toda sexta, id="comp-ingles-001", hoje=2026-05-27 (quarta)
+  Sexta desta semana = 2026-05-29  |  Quarta desta semana = 2026-05-27 (hoje)
 
-CHECKLIST antes de enviar o plano:
-  ✓ O item recorrente está no plano COM a excecao da data original adicionada?
-  ✓ O item pontual está no plano COM a nova data correta?
+  Ação 1 — inglês recorrente com exceção da sexta:
+  {
+    "id": "comp-ingles-001",
+    "titulo": "Inglês",
+    "hora": "19:00",
+    "duracao": 60,
+    "categoria": "rotina",
+    "recorrencia": {
+      "tipo": "semanal",
+      "diasSemana": [5],
+      "excecoes": ["2026-05-29"]
+    }
+  }
+
+  Ação 2 — novo item pontual na quarta:
+  {
+    "id": "pontual-ingles-2026-05-27",
+    "titulo": "Inglês",
+    "hora": "19:00",
+    "duracao": 60,
+    "categoria": "rotina",
+    "data": "2026-05-27",
+    "recorrencia": null
+  }
+
+  AMBOS os objetos devem aparecer no array "compromissos" do plano retornado.
+
+CHECKLIST OBRIGATÓRIO antes de enviar o plano:
+  ✓ O item recorrente original está no plano COM excecoes atualizado (data original adicionada)?
+  ✓ O novo item pontual está no plano COM data = nova data correta?
+  ✓ O id do item pontual é DIFERENTE do id do item recorrente?
+  ✓ O item pontual tem recorrencia: null (não recorrente)?
+  ✓ A nova data é realmente o dia da semana que o usuário pediu? (use MAPEAMENTO de dias acima)
   ✓ Todos os outros compromissos estão intactos e inalterados?
-  ✓ A nova data é realmente o dia da semana que o usuário pediu? (valide com REGRA DE DATAS)
 
 NUNCA omitir o item recorrente do plano ao fazer essa operação.
 NUNCA criar o pontual sem adicionar a excecao no recorrente.
+Se apenas uma ação aparecer → bug: duplicação (sem excecao) ou desaparecimento (sem pontual).
 
 ══════════════════════════════════
 REGRA DE REMOÇÃO E ALTERAÇÃO

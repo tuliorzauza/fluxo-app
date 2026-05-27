@@ -169,6 +169,33 @@ function sanitizarTarefas(tarefas) {
   });
 }
 
+// ── BUG-FLORA-DIAS: Valida diasSemana de compromissos recorrentes ─────────────
+// Flora às vezes alucina diasSemana errado (ex: [6] para "segunda").
+// Esta função restaura diasSemana original quando Flora mudou sem pedido explícito.
+function validarDiasSemana(novoPlano, planoAnterior) {
+  if (!novoPlano?.compromissos || !planoAnterior?.compromissos) return novoPlano;
+  const mapaAnterior = new Map(
+    (planoAnterior.compromissos || []).map(c => [c.id, c])
+  );
+  const compromissosValidados = novoPlano.compromissos.map(c => {
+    if (!c.recorrencia?.diasSemana) return c;
+    const anterior = mapaAnterior.get(c.id);
+    if (!anterior?.recorrencia?.diasSemana) return c; // item novo — aceita
+    const diasIguais = JSON.stringify([...c.recorrencia.diasSemana].sort()) ===
+                       JSON.stringify([...anterior.recorrencia.diasSemana].sort());
+    if (!diasIguais) {
+      console.warn(
+        `[FLORA-VALIDAÇÃO] diasSemana mudou para "${c.titulo}":`,
+        anterior.recorrencia.diasSemana, '→', c.recorrencia.diasSemana,
+        '— restaurando original'
+      );
+      return { ...c, recorrencia: { ...c.recorrencia, diasSemana: anterior.recorrencia.diasSemana } };
+    }
+    return c;
+  });
+  return { ...novoPlano, compromissos: compromissosValidados };
+}
+
 // ── Pós-processamento da resposta da Flora ────────────────────────────────────
 function posProcessar({ rawText, planoAtual, messages, memoria }) {
   let { mensagem, modo, plano, perguntaFeita, quickReplies, memoriaUpdate, eventoGamificacao } = parseFloraResponse(rawText);
@@ -176,6 +203,11 @@ function posProcessar({ rawText, planoAtual, messages, memoria }) {
   // BUG-026: ajustarDatasFuturas removida do fluxo de chat para não ressuscitar eventos expirados.
   // Flora gera datas corretas via REGRA DE DATAS. ajustarData() ainda converte aliases textuais.
   // ajustarDatasFuturas pode ser chamada pontualmente em migrações de dados se necessário.
+
+  // BUG-FLORA-DIAS: restaura diasSemana original se Flora os alterou sem pedido explícito
+  if (plano && planoAtual) {
+    plano = validarDiasSemana(plano, planoAtual);
+  }
 
   if (plano?.tarefas) {
     plano.tarefas = sanitizarTarefas(plano.tarefas);

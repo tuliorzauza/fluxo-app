@@ -3,14 +3,16 @@ import { Zap } from 'lucide-react';
 
 const CACHE_KEY = 'fluxo_proxima_acao';
 
+// BUG-031: toISOString() retorna UTC — após 21h BRT o dia já avança incorretamente.
+// toLocaleDateString('sv-SE', ...) retorna YYYY-MM-DD no fuso de Brasília.
 function hojeYMD() {
-  return new Date().toISOString().split('T')[0];
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 }
 
 function amanhaYMD() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  return d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 }
 
 function diaSemanaDe(dataYMD) {
