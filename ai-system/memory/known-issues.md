@@ -550,3 +550,23 @@ const ALTURA_TOTAL = (HORA_FIM - HORA_INI + 1) * ALTURA_HORA; // 1380px
 - `server/services/flora.js`: schema de diffs documentado no topo, `parseFloraResponse()` extrai `alteracoes` + `_planoLegado`, FORMATO DE RESPOSTA reescrito
 - `server/index.js`: `aplicarDiffs()` adicionada, `posProcessar()` reescrita para usar `planoDoSupabase`, ambos os endpoints carregam plano do Supabase antes de processar
 - `client/src/App.jsx`: `setPlano` simplificado (sem merge), `preservarEstadosTarefas` e `mergeCompromissos` removidos do import
+
+---
+
+### [2026-05-27] BUG-FLORA-LEGADO — System prompt com instruções contraditórias sobre formato de resposta
+
+**Sintoma:** Flora retorna plano completo em vez de `alteracoes[]`, ignorando o FORMATO DE RESPOSTA novo. O calendário não atualiza corretamente.
+
+**Causa raiz:** Após o refactor BUG-ESTRUTURAL-2 (que reescreveu a seção FORMATO DE RESPOSTA), várias seções específicas do system prompt ainda tinham referências ao formato antigo (`"plano": null`, `"plano": {...}`, "plano DEVE ser retornado completo", "PLANO COMPLETO"). Flora obedece regras mais específicas sobre regras gerais — então as seções específicas (REGRA DE EXECUÇÃO, REGRA DE REMOÇÃO, SUBSTITUIÇÃO, MODO CAOS, REGRA DE CONFIRMAÇÃO, REMOÇÃO PONTUAL, MOVER OCORRÊNCIA) sobrescreviam o FORMATO DE RESPOSTA geral.
+
+**Solução aplicada (2026-05-27):**
+- REGRA DE REMOÇÃO E ALTERAÇÃO: substituído "plano DEVE ser retornado completo" por instruções com `alteracoes[]`
+- REGRA DE EXECUÇÃO: substituído "PLANO COMPLETO" e `plano: null` por `alteracoes[]` e `alteracoes: null`
+- MODO CAOS: `plano: null` → `alteracoes: null`
+- REGRA DE CONFIRMAÇÃO: `plano: null` → `alteracoes: null`
+- SUBSTITUIÇÃO DE TAREFA: `plano: null` e `plano: {completo}` → `alteracoes: null` e `alteracoes: [delete+add]`
+- REMOÇÃO PONTUAL: exemplo JSON solto → `{ "op": "add_excecao", ... }`
+- MOVER OCORRÊNCIA: referências a array `compromissos` do plano → `alteracoes[]`
+- Busca global por `plano: null` e `plano:` residuais no template
+
+**Arquivo:** `server/services/flora.js` (`buildFloraPrompt()`)
