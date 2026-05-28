@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lightbulb } from 'lucide-react';
+import { hojeYMD } from '../utils/planoUtils';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -7,10 +8,6 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 const EMOJIS_NEGATIVOS = new Set(['⚠️', '🔥', '😮‍💨', '🌀']);
 
 const CACHE_KEY = 'fluxo_estado_semana';
-
-function hojeYMD() {
-  return new Date().toISOString().split('T')[0];
-}
 
 // Hash da agenda: identifica mudanças na composição do plano
 function calcularHashAgenda(plano) {
@@ -28,7 +25,10 @@ function calcularHashAgenda(plano) {
 function lerCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.versao !== '2') return null;
+    return parsed;
   } catch { return null; }
 }
 
@@ -36,6 +36,7 @@ function salvarCache(estado, hashAgenda) {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({
       ...estado,
+      versao: '2',
       data: hojeYMD(),
       hashAgenda,
     }));
