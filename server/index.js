@@ -241,9 +241,13 @@ function aplicarDiffs(planoAtual, alteracoes) {
       case 'add_excecao':
         plano.compromissos = plano.compromissos.map(c => {
           if (c.id !== alt.id) return c;
-          const excecoes = [...(c.excecoes || [])];
+          if (!c.recorrencia) return c;
+          const excecoes = [...(c.recorrencia.excecoes || [])];
           if (!excecoes.includes(alt.data)) excecoes.push(alt.data);
-          return { ...c, excecoes };
+          return {
+            ...c,
+            recorrencia: { ...c.recorrencia, excecoes },
+          };
         });
         break;
       case 'add_tarefa':
