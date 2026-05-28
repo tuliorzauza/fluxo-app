@@ -553,6 +553,22 @@ const ALTURA_TOTAL = (HORA_FIM - HORA_INI + 1) * ALTURA_HORA; // 1380px
 
 ---
 
+### [2026-05-27] BUG-ESTADO-SEMANA — Estado da Semana ignorava exceções e pontuais ✅ RESOLVIDO
+
+**Sintoma:** O card "Estado da Semana" mostrava conflitos de horário que não existiam (ex: academia cancelada ainda aparecia), e ignorava eventos pontuais na semana. O calendário (RoutineView) estava sempre certo porque usava datas reais + exceções; o Estado da Semana não.
+
+**Causa raiz:** `calcularMetricasSemana()` iterava sobre `recorrencia.diasSemana` genérico (ex: [1,3,5]) sem aplicar `excecoes`. O `porDia` no endpoint usava nomes longos de dias ("segunda-feira") sem data real — não distinguia "segunda desta semana" de "segunda genérica".
+
+**Solução aplicada (2026-05-28):**
+- `compromisosDoDia(compromissos, dataYMD)` adicionada no backend — aplica exceções e pontuais por data real, exatamente como o calendário
+- `datasSemanAtual()` retorna as 7 datas reais dom-sáb da semana atual em BRT
+- `calcularMetricasSemana()` refatorada para iterar sobre datas reais via `compromisosDoDia()`
+- `porDia` no endpoint passa a usar datas específicas ("Qua 05/28") em vez de nomes genéricos
+
+**Arquivo:** `server/index.js`
+
+---
+
 ### [2026-05-27] BUG-ESTRUTURAL-1 — Filtragem de compromissos do dia duplicada em 3 cards ✅ RESOLVIDO
 
 **Sintoma:** TaskList, NextActionCard e MicrointervalosCard cada um filtrava independentemente os compromissos do dia. Resultado: os três podiam mostrar dados inconsistentes entre si — especialmente após 21h BRT (UTC bug em MicrointervalosCard usava `toISOString().split('T')[0]`).

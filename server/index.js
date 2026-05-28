@@ -44,6 +44,45 @@ function toYMDBrasilia(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// ── BUG-ESTADO-SEMANA: filtra compromissos por data real aplicando exceções ────
+// Equivalente a getCompromissosDoDia() do frontend — garante consistência com o calendário.
+function compromisosDoDia(compromissos, dataYMD) {
+  if (!compromissos?.length || !dataYMD) return [];
+  const diaSemana = new Date(dataYMD + 'T12:00:00').getDay();
+  return (compromissos || []).filter(c => {
+    if (!c?.titulo) return false;
+    // Aplica exceções — data com exceção não ocorre nesse dia
+    const excecoes = c.recorrencia?.excecoes || [];
+    if (excecoes.includes(dataYMD)) return false;
+    // Pontual: verifica campo data
+    if (!c.recorrencia) return c.data === dataYMD;
+    // Recorrente diário
+    if (c.recorrencia.tipo === 'diaria') return true;
+    // Recorrente semanal
+    if (c.recorrencia.tipo === 'semanal') {
+      return (c.recorrencia.diasSemana || []).includes(diaSemana);
+    }
+    return false;
+  }).sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
+}
+
+// ── Retorna as 7 datas da semana atual (dom a sáb) em BRT, formato YYYY-MM-DD ─
+function datasSemanAtual() {
+  const hoje = agoraBrasilia();
+  const diaSemana = hoje.getDay(); // 0=dom, 6=sáb
+  // Recua até o domingo da semana atual
+  const domingo = new Date(hoje);
+  domingo.setDate(hoje.getDate() - diaSemana);
+  domingo.setHours(12, 0, 0, 0);
+  const datas = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(domingo);
+    d.setDate(domingo.getDate() + i);
+    datas.push(toYMDBrasilia(d));
+  }
+  return datas; // [domingo, segunda, ..., sábado]
+}
+
 function proximoFuturo(diaSemanaIdx) {
   const hoje = agoraBrasilia();
   hoje.setHours(0, 0, 0, 0);
@@ -594,50 +633,43 @@ app.post('/api/usuario/salvar-historico', autenticarUsuario, async (req, res) =>
 });
 
 // ── Métricas reais da semana a partir dos compromissos ───────────────────────
-function calcularMetricasSemana(compromissos) {
+// datasSemanaSemana: array de 7 strings YYYY-MM-DD (dom a sáb) da semana atual.
+// Usa compromisosDoDia() para aplicar exceções e pontuais corretamente.
+function calcularMetricasSemana(compromissos, datasSemanaSemana) {
   const JANELA_INI  = 8  * 60; // 08h = 480 min
   const JANELA_FIM  = 22 * 60; // 22h = 1320 min
-  const JANELA_DIA  = JANELA_FIM - JANELA_INI; // 840 min
   const NOITE_INI   = 18 * 60; // 18h
   const NOITE_FIM   = 22 * 60; // 22h
   const DIAS        = 7;
 
-  // Blocos por dia (0=Dom..6=Sáb)
-  const porDiaNum = Array.from({ length: DIAS }, () => []);
-
-  (compromissos || []).forEach(c => {
-    if (!c.hora) return;
-    const [h, m] = c.hora.split(':').map(Number);
-    const ini = h * 60 + m;
-    let dur = 60;
-    if (c.horaFim) {
-      const [hf, mf] = c.horaFim.split(':').map(Number);
-      const d = (hf * 60 + mf) - ini;
-      if (d > 0) dur = d;
-    } else if (c.duracao) {
-      dur = c.duracao;
-    }
-    const fim = ini + dur;
-
-    const add = (d) => {
-      const iniClamp = Math.max(ini, JANELA_INI);
-      const fimClamp = Math.min(fim, JANELA_FIM);
-      if (fimClamp > iniClamp) porDiaNum[d].push({ ini: iniClamp, fim: fimClamp });
-    };
-
-    if (c.recorrencia?.tipo === 'diaria') {
-      for (let d = 0; d < DIAS; d++) add(d);
-    } else if (c.recorrencia?.tipo === 'semanal' && Array.isArray(c.recorrencia.diasSemana)) {
-      c.recorrencia.diasSemana.forEach(d => add(d));
-    } else if (c.data) {
-      const dia = new Date(c.data + 'T12:00:00').getDay();
-      add(dia);
-    }
+  // Para cada dia real da semana, busca compromissos com exceções aplicadas
+  const porDiaNum = datasSemanaSemana.map(dataYMD => {
+    const itens = compromisosDoDia(compromissos, dataYMD);
+    return itens
+      .filter(c => c.hora)
+      .map(c => {
+        const [h, m] = c.hora.split(':').map(Number);
+        const ini = h * 60 + m;
+        let dur = 60;
+        if (c.horaFim) {
+          const [hf, mf] = c.horaFim.split(':').map(Number);
+          const d = (hf * 60 + mf) - ini;
+          if (d > 0) dur = d;
+        } else if (c.duracao) {
+          dur = c.duracao;
+        }
+        const fim = ini + dur;
+        return {
+          ini: Math.max(ini, JANELA_INI),
+          fim: Math.min(fim, JANELA_FIM),
+        };
+      })
+      .filter(iv => iv.fim > iv.ini);
   });
 
-  let totalOcupado    = 0;
-  let noitesLivres    = 0;
-  let blocosLongos    = 0;
+  let totalOcupado     = 0;
+  let noitesLivres     = 0;
+  let blocosLongos     = 0;
   let diasFragmentados = 0;
 
   for (let d = 0; d < DIAS; d++) {
@@ -676,6 +708,7 @@ function calcularMetricasSemana(compromissos) {
     if (livres.filter(b => b > 0 && b < 90).length >= 3) diasFragmentados++;
   }
 
+  const JANELA_DIA = JANELA_FIM - JANELA_INI; // 840 min
   const percentualLivre = Math.round(((JANELA_DIA * DIAS - totalOcupado) / (JANELA_DIA * DIAS)) * 100);
   const horasLivres     = Math.round((JANELA_DIA * DIAS - totalOcupado) / 60);
 
@@ -696,42 +729,23 @@ app.post('/api/estado-semana', async (req, res) => {
     });
   }
 
-  // Nomes longos em pt-BR indexados por getDay() (0=dom..6=sáb)
-  const NOMES_DIA_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  // BUG-ESTADO-SEMANA: usa datas reais da semana com exceções aplicadas
+  // Em vez de nomes genéricos de dias, cada chave é "Dia DD/MM" — data real desta semana.
+  const NOMES_DIAS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const datasSemanaSemana = datasSemanAtual(); // [domingo, ..., sábado] em BRT
 
-  // Mapeia compromissos extraindo os dias reais da semana em que ocorrem.
-  // Para recorrentes: usa recorrencia.diasSemana (ints 0-6) — campo correto.
-  // Para únicos: usa c.data para derivar o nome do dia.
-  const compromissos = (planoAtual.compromissos || []).map(c => {
-    let diasSemana;
-    if (c.recorrencia?.tipo === 'semanal' && Array.isArray(c.recorrencia.diasSemana)) {
-      // Recorrente semanal: expande cada int para o nome do dia real
-      diasSemana = c.recorrencia.diasSemana.map(d => NOMES_DIA_PT[d]);
-    } else if (c.recorrencia?.tipo === 'diaria') {
-      // Recorrente diário: ocorre todos os dias da semana
-      diasSemana = [...NOMES_DIA_PT];
-    } else {
-      // Evento único ou recorrência mensal: usa a data explícita
-      diasSemana = c.data
-        ? [new Date(c.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })]
-        : ['indefinido'];
-    }
-    return {
+  // Para cada dia real, filtra compromissos com exceções aplicadas (igual ao calendário)
+  const porDia = {};
+  datasSemanaSemana.forEach((dataYMD, idx) => {
+    const itens = compromisosDoDia(planoAtual.compromissos || [], dataYMD);
+    if (itens.length === 0) return; // dia vazio — não inclui no JSON
+    const nomeDia = `${NOMES_DIAS_PT[idx]} ${dataYMD.slice(5).replace('-', '/')}`;
+    porDia[nomeDia] = itens.map(c => ({
       titulo: c.titulo,
       hora: c.hora || null,
       horaFim: c.horaFim || null,
       categoria: c.categoria,
-      diasSemana,
-    };
-  });
-
-  // Agrupa por dia da semana — garante que a IA analise cada dia separadamente
-  const porDia = {};
-  compromissos.forEach(c => {
-    (c.diasSemana || ['indefinido']).forEach(dia => {
-      if (!porDia[dia]) porDia[dia] = [];
-      porDia[dia].push({ titulo: c.titulo, hora: c.hora, horaFim: c.horaFim, categoria: c.categoria });
-    });
+    }));
   });
 
   const tarefas = (planoAtual.tarefas || [])
@@ -746,8 +760,8 @@ app.post('/api/estado-semana', async (req, res) => {
   const comprometidas = rotina?.comprometida || [];
   const ritmoAceito   = rotina?.ritmoAceito  || null;
 
-  // Calcula métricas reais de tempo
-  const metricas = calcularMetricasSemana(planoAtual.compromissos || []);
+  // Calcula métricas reais de tempo com exceções aplicadas via datas reais
+  const metricas = calcularMetricasSemana(planoAtual.compromissos || [], datasSemanaSemana);
   const blocoMetricas = `
 Métricas calculadas da semana:
 - Horas livres (8h-22h): ${metricas.horasLivres}h de ${7 * 14}h disponíveis (${metricas.percentualLivre}% livre)
