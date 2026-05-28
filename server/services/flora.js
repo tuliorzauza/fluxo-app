@@ -777,7 +777,14 @@ MOVER OCORRÊNCIA ÚNICA — PADRÃO OBRIGATÓRIO
 Quando o usuário pedir para mover UMA ocorrência de compromisso recorrente
 (ex: "mova o inglês dessa sexta para quarta", "esse sábado o skate vai ser na quinta"):
 
-OBRIGATÓRIO executar as DUAS ações simultaneamente no plano retornado:
+OBRIGATÓRIO executar as ações necessárias simultaneamente no plano retornado:
+
+AÇÃO 0 — Verificar e deletar pontual órfão na data de origem (SEMPRE FAZER PRIMEIRO):
+  Antes de criar o novo pontual, verificar se já existe um compromisso pontual
+  (recorrencia: null) com o mesmo título na data de origem (onde estava antes do movimento).
+  Se existir: incluir { "op": "delete_compromisso", "id": "id-do-pontual-existente" }
+  nas alteracoes[] ANTES de qualquer outra ação.
+  Isso garante que mover um compromisso já movido anteriormente não deixa resíduos no calendário.
 
 AÇÃO 1 — Adicionar exceção no item recorrente original:
   No objeto do compromisso recorrente, adicionar a data ORIGINAL em recorrencia.excecoes.
@@ -787,17 +794,21 @@ AÇÃO 2 — Criar novo item pontual para a nova data:
   Novo objeto com id único, recorrencia: null, e data = nova data.
   Todos os outros campos (titulo, hora, duracao, categoria) herdados do original.
 
-EXEMPLO CONCRETO — "mova o inglês dessa sexta para quarta":
-  Situação: inglês recorrente toda sexta, id="comp-ingles-001", hoje=2026-05-27 (quarta)
-  Sexta desta semana = 2026-05-29  |  Quarta desta semana = 2026-05-27 (hoje)
+EXEMPLO CONCRETO — "mova o inglês de sexta para sábado" (inglês já foi movido antes):
+  Situação: inglês já tinha sido movido para sexta (pontual-ingles-2026-05-29 existe).
+  Usuário pede para mover inglês de sexta para sábado.
+  Sexta = 2026-05-29 (data de origem)  |  Sábado = 2026-05-30 (nova data)
 
-  Ação 1 — inglês recorrente com exceção da sexta:
+  Ação 0 — deletar o pontual órfão da sexta (data de origem):
+  { "op": "delete_compromisso", "id": "pontual-ingles-2026-05-29" }
+
+  Ação 1 — inglês recorrente com exceção da sexta (caso haja recorrente original):
   {
     "id": "comp-ingles-001",
     "titulo": "Inglês",
-    "hora": "19:00",
+    "hora": "17:10",
     "duracao": 60,
-    "categoria": "rotina",
+    "categoria": "fixo",
     "recorrencia": {
       "tipo": "semanal",
       "diasSemana": [5],
@@ -805,26 +816,34 @@ EXEMPLO CONCRETO — "mova o inglês dessa sexta para quarta":
     }
   }
 
-  Ação 2 — novo item pontual na quarta:
+  Ação 2 — novo item pontual no sábado:
   {
-    "id": "pontual-ingles-2026-05-27",
+    "id": "pontual-ingles-2026-05-30",
     "titulo": "Inglês",
-    "hora": "19:00",
+    "hora": "17:10",
     "duracao": 60,
-    "categoria": "rotina",
-    "data": "2026-05-27",
+    "categoria": "fixo",
+    "data": "2026-05-30",
     "recorrencia": null
   }
 
-  AMBAS as operações devem aparecer em alteracoes[]:
+  RESULTADO CORRETO em alteracoes[]:
+  [
+    { "op": "delete_compromisso", "id": "pontual-ingles-2026-05-29" },
+    { "op": "add_excecao", "id": "comp-ingles-001", "data": "2026-05-29" },
+    { "op": "add_compromisso", "item": { "id": "pontual-ingles-2026-05-30", "titulo": "Inglês", "hora": "17:10", "duracao": 60, "data": "2026-05-30", "categoria": "fixo", "recorrencia": null } }
+  ]
+
+  TODAS as operações necessárias devem aparecer em alteracoes[]:
 
 CHECKLIST OBRIGATÓRIO antes de enviar o plano:
+  ✓ Se havia um pontual do mesmo item na data de origem, ele foi deletado com delete_compromisso nas alteracoes[] ANTES das demais ações?
   ✓ O item recorrente original está no plano COM excecoes atualizado (data original adicionada)?
   ✓ O novo item pontual está no plano COM data = nova data correta?
   ✓ O id do item pontual é DIFERENTE do id do item recorrente?
   ✓ O item pontual tem recorrencia: null (não recorrente)?
   ✓ A nova data é realmente o dia da semana que o usuário pediu? (use MAPEAMENTO de dias acima)
-  ✓ Somente as duas operações acima estão em alteracoes[] — nenhum outro item foi incluído?
+  ✓ Todas as operações necessárias estão em alteracoes[] — nenhum resíduo foi deixado no calendário?
 
 NUNCA omitir o add_excecao de alteracoes[] ao fazer essa operação.
 NUNCA criar o pontual sem adicionar a excecao no recorrente.
