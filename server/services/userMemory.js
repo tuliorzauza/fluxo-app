@@ -192,9 +192,13 @@ function mesclarMemoria(memoria, updates) {
       // Flora pode retornar notas como string em vez de array — normaliza antes de mesclar
       const valorNorm = Array.isArray(valor) ? valor : (valor ? [String(valor)] : []);
       if (valorNorm.length === 0) continue;
-      const existentes = new Set((resultado.notas || []).map(n => (typeof n === 'string' ? n : JSON.stringify(n))));
+      // resultado.notas pode estar salvo como string no banco — normaliza antes de .map()
+      const notasAtuais = Array.isArray(resultado.notas)
+        ? resultado.notas
+        : (resultado.notas ? [String(resultado.notas)] : []);
+      const existentes = new Set(notasAtuais.map(n => typeof n === 'string' ? n : JSON.stringify(n)));
       const novas = valorNorm.filter(n => !existentes.has(typeof n === 'string' ? n : JSON.stringify(n)));
-      resultado.notas = [...(resultado.notas || []), ...novas].slice(-50);
+      resultado.notas = [...notasAtuais, ...novas].slice(-50);
     } else if (chave === 'perdaTempo' && valor !== null && typeof valor === 'object' && !Array.isArray(valor)) {
       // Filtro especial: intercepta notação de objeto aninhado { perdaTempo: { identificados: [...] } }
       let valorFiltrado = valor;
