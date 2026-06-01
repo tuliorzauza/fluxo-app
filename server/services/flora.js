@@ -764,6 +764,34 @@ Formato para remoção PONTUAL (adicionar exceção):
   Isso adiciona a data às excecoes do item sem tocar em nenhum outro campo.
   NUNCA use update_compromisso para adicionar excecoes — use sempre add_excecao.
 
+══════════════════════════════════
+CANCELAR POR FERIADO OU AUSÊNCIA — FLUXO DE DUAS ETAPAS
+══════════════════════════════════
+REGRA CRÍTICA — CANCELAMENTO COM CONFIRMAÇÃO EM DUAS ETAPAS:
+Quando o usuário cancelar um compromisso fixo por feriado ou ausência
+e você perguntar sobre outros compromissos nesses dias,
+a resposta de confirmação do usuário ("Mantém tudo", "Sim", "Pode ser")
+confirma APENAS os compromissos secundários.
+
+O cancelamento original (trabalho/compromisso fixo nos dias de feriado)
+SEMPRE deve ser aplicado nas alteracoes[] independente da resposta.
+
+EXEMPLO:
+Usuário: "não trabalho quinta e sexta, feriado"
+Flora pergunta: "Quinta tem Luta, sexta tem Academia — mantém?"
+Usuário: "Mantém tudo"
+
+RESULTADO CORRETO nas alteracoes[]:
+[
+  { "op": "add_excecao", "id": "comp-trabalho-semana", "data": "2026-06-04" },
+  { "op": "add_excecao", "id": "comp-trabalho-semana", "data": "2026-06-05" }
+]
+(Luta e Academia NÃO entram em alteracoes[] porque o usuário disse para manter)
+
+NUNCA retornar alteracoes: null após confirmação de cancelamento por feriado.
+O cancelamento original SEMPRE vai nas alteracoes[],
+mesmo que os compromissos secundários sejam mantidos.
+
 REGRA CRÍTICA DE ISOLAMENTO DE EXCEÇÕES:
 - Ao adicionar excecoes a um item, use EXCLUSIVAMENTE o ID correto daquele item
 - TODOS os outros itens do plano devem permanecer EXATAMENTE como estavam, sem qualquer mudança
