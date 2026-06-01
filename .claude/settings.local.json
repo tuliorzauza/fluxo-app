@@ -40,7 +40,12 @@
       "Bash(npx kill-port *)",
       "Bash(node server/index.js)",
       "Bash(npm install *)",
-      "Bash(ls \"C:\\\\Users\\\\W10\\\\Documents\\\\Fluxo App\\\\\" && echo \"---\" && ls \"C:\\\\Users\\\\W10\\\\Documents\\\\Fluxo App\\\\client\\\\public\\\\\" 2>/dev/null || echo \"public vazio ou nao existe\" && ls \"C:\\\\Users\\\\W10\\\\Documents\\\\Fluxo App\\\\client\\\\src\\\\components\\\\projects\\\\\" 2>/dev/null || echo \"pasta projects nao existe\")"
+      "Bash(ls \"C:\\\\Users\\\\W10\\\\Documents\\\\Fluxo App\\\\\" && echo \"---\" && ls \"C:\\\\Users\\\\W10\\\\Documents\\\\Fluxo App\\\\client\\\\public\\\\\" 2>/dev/null || echo \"public vazio ou nao existe\" && ls \"C:\\\\Users\\\\W10\\\\Documents\\\\Fluxo App\\\\client\\\\src\\\\components\\\\projects\\\\\" 2>/dev/null || echo \"pasta projects nao existe\")",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(node -e \"const f = require\\('./server/services/flora.js'\\); console.log\\('flora.js carregou OK'\\);\")",
+      "Bash(ls /mnt/skills/public/)"
     ]
   }
 }
