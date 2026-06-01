@@ -188,9 +188,12 @@ function mesclarMemoria(memoria, updates) {
       const existentes = new Map((resultado.checkIns || []).map(c => [c.data, c]));
       valor.forEach(c => { if (c.data) existentes.set(c.data, c); });
       resultado.checkIns = [...existentes.values()].slice(-90); // ~3 meses
-    } else if (chave === 'notas' && Array.isArray(valor)) {
+    } else if (chave === 'notas') {
+      // Flora pode retornar notas como string em vez de array — normaliza antes de mesclar
+      const valorNorm = Array.isArray(valor) ? valor : (valor ? [String(valor)] : []);
+      if (valorNorm.length === 0) continue;
       const existentes = new Set((resultado.notas || []).map(n => (typeof n === 'string' ? n : JSON.stringify(n))));
-      const novas = valor.filter(n => !existentes.has(typeof n === 'string' ? n : JSON.stringify(n)));
+      const novas = valorNorm.filter(n => !existentes.has(typeof n === 'string' ? n : JSON.stringify(n)));
       resultado.notas = [...(resultado.notas || []), ...novas].slice(-50);
     } else if (chave === 'perdaTempo' && valor !== null && typeof valor === 'object' && !Array.isArray(valor)) {
       // Filtro especial: intercepta notação de objeto aninhado { perdaTempo: { identificados: [...] } }
@@ -294,7 +297,9 @@ function formatarMemoriaParaPrompt(memoria) {
     if (gam.badges?.length > 0) linhas.push(`  Conquistas: ${gam.badges.slice(-5).join(', ')}`);
   }
 
-  if (memoria.notas?.length) linhas.push(`Notas: ${memoria.notas.slice(-5).join('; ')}`);
+  // Defesa: notas pode estar salvo como string se Flora retornou sem array — normaliza
+  const notasArr = Array.isArray(memoria.notas) ? memoria.notas : (memoria.notas ? [String(memoria.notas)] : []);
+  if (notasArr.length) linhas.push(`Notas: ${notasArr.slice(-5).join('; ')}`);
 
   const rot = memoria.rotina || {};
   if (rot.comprometida?.length) linhas.push(`Rotina inegociável: ${rot.comprometida.join(', ')}`);
