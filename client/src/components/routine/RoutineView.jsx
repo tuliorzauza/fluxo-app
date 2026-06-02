@@ -12,7 +12,7 @@ import { CATEGORIAS, getCategoria } from '../../utils/categorias';
 import {
   DIAS_LABEL, MESES_LABEL,
   calcSemana, ocorrenciasNaSemana, isHoje,
-  horaParaMinutos, duracaoMinutos,
+  horaParaMinutos, duracaoMinutos, toYMD,
 } from '../../utils/calendarUtils';
 
 const HORA_INI   = 1;  // timeline começa em 1h
@@ -29,6 +29,7 @@ export default function RoutineView({
   tarefas = [],
   onEditarItem,
   onDeletarItem,
+  onRemoverOcorrencia,
   onAdicionarCompromisso,
 }) {
   const [offset,     setOffset]     = useState(0);
@@ -251,6 +252,7 @@ export default function RoutineView({
           onFechar={() => setItemSel(null)}
           onEditar={(changes) => { onEditarItem?.(itemSel.item.id, changes, itemSel.item._tipo); setItemSel(null); }}
           onApagar={() => { onDeletarItem?.(itemSel.item.id, itemSel.item._tipo); setItemSel(null); }}
+          onRemoverDia={() => { onRemoverOcorrencia?.(itemSel.item.id, toYMD(itemSel.dia)); setItemSel(null); }}
         />
       )}
 
@@ -278,7 +280,7 @@ function _calcularHoraFim(hora, duracao) {
   return `${hf}:${mf}`;
 }
 
-function ModalItem({ item, dia, onFechar, onEditar, onApagar }) {
+function ModalItem({ item, dia, onFechar, onEditar, onApagar, onRemoverDia }) {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState({
     titulo:    item.titulo,
@@ -323,15 +325,25 @@ function ModalItem({ item, dia, onFechar, onEditar, onApagar }) {
               </div>
             )}
 
-            <div className="flex gap-2">
-              <button onClick={() => setEditando(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold transition-colors">
-                <Edit2 size={12} /> Editar
-              </button>
-              <button onClick={onApagar}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-semibold transition-colors">
-                <Trash2 size={12} /> Apagar
-              </button>
+            <div className="flex flex-col gap-2">
+              {/* Remover só esta ocorrência — só faz sentido para itens recorrentes.
+                  Grava a exceção pontual direto no plano (sem passar pela Flora). */}
+              {item.recorrencia && (
+                <button onClick={onRemoverDia}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-xs font-semibold transition-colors">
+                  <Trash2 size={12} /> Remover só {DIAS_LABEL[dia.getDay()]} {String(dia.getDate()).padStart(2,'0')}/{String(dia.getMonth()+1).padStart(2,'0')}
+                </button>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => setEditando(true)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold transition-colors">
+                  <Edit2 size={12} /> Editar
+                </button>
+                <button onClick={onApagar}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-semibold transition-colors">
+                  <Trash2 size={12} /> {item.recorrencia ? 'Tirar da rotina' : 'Apagar'}
+                </button>
+              </div>
             </div>
           </>
         ) : (

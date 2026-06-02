@@ -896,6 +896,24 @@ export default function App() {
     salvarPlanoNoSupabase(novo);
   }, [plano, salvarPlanoNoSupabase]);
 
+  // ── Remover SÓ uma ocorrência de compromisso recorrente ─────────────────
+  // Grava a data em recorrencia.excecoes — determinístico, não passa pela Flora.
+  const removerOcorrencia = useCallback((id, dataYMD) => {
+    if (!plano || !dataYMD) return;
+    const novo = {
+      ...plano,
+      compromissos: (plano.compromissos || []).map(c => {
+        if (c.id !== id || !c.recorrencia) return c;
+        const excecoes = [...(c.recorrencia.excecoes || [])];
+        if (!excecoes.includes(dataYMD)) excecoes.push(dataYMD);
+        return { ...c, recorrencia: { ...c.recorrencia, excecoes } };
+      }),
+    };
+    setPlano(novo);
+    ls_set(SK.plano, novo);
+    salvarPlanoNoSupabase(novo);
+  }, [plano, salvarPlanoNoSupabase]);
+
   // ── Adicionar compromisso direto pelo calendário ────────────────────────
   const adicionarCompromisso = useCallback((compromisso) => {
     const planoBase = plano || { compromissos: [], tarefas: [] };
@@ -1459,6 +1477,7 @@ export default function App() {
                 tarefas={plano?.tarefas || []}
                 onEditarItem={editarItem}
                 onDeletarItem={deletarItem}
+                onRemoverOcorrencia={removerOcorrencia}
                 onAdicionarCompromisso={adicionarCompromisso}
               />
             ) : (
