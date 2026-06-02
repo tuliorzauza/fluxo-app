@@ -45,7 +45,8 @@
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(node -e \"const f = require\\('./server/services/flora.js'\\); console.log\\('flora.js carregou OK'\\);\")",
-      "Bash(ls /mnt/skills/public/)"
+      "Bash(ls /mnt/skills/public/)",
+      "Bash(node --check server/index.js)"
     ]
   }
 }

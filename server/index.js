@@ -230,15 +230,29 @@ function aplicarDiffs(planoAtual, alteracoes) {
           plano.compromissos = [...plano.compromissos, alt.compromisso];
         }
         break;
-      case 'update_compromisso':
+      case 'update_compromisso': {
+        const alvoExiste = plano.compromissos.some(c => c.id === alt.id);
+        if (!alvoExiste) {
+          console.error('[DIFFS] op=' + alt.op + ': ID não encontrado:', alt.id, '— IDs disponíveis:', plano.compromissos.map(c => c.id));
+        }
         plano.compromissos = plano.compromissos.map(c =>
           c.id === alt.id ? { ...c, ...alt.campos } : c
         );
         break;
-      case 'delete_compromisso':
+      }
+      case 'delete_compromisso': {
+        const alvoExiste = plano.compromissos.some(c => c.id === alt.id);
+        if (!alvoExiste) {
+          console.error('[DIFFS] op=' + alt.op + ': ID não encontrado:', alt.id, '— IDs disponíveis:', plano.compromissos.map(c => c.id));
+        }
         plano.compromissos = plano.compromissos.filter(c => c.id !== alt.id);
         break;
-      case 'add_excecao':
+      }
+      case 'add_excecao': {
+        const alvoExiste = plano.compromissos.some(c => c.id === alt.id);
+        if (!alvoExiste) {
+          console.error('[DIFFS] add_excecao: ID não encontrado no plano:', alt.id, '— exceção ignorada. IDs disponíveis:', plano.compromissos.map(c => c.id));
+        }
         plano.compromissos = plano.compromissos.map(c => {
           if (c.id !== alt.id) return c;
           if (!c.recorrencia) return c;
@@ -250,6 +264,7 @@ function aplicarDiffs(planoAtual, alteracoes) {
           };
         });
         break;
+      }
       case 'add_tarefa':
         if (alt.tarefa && !plano.tarefas.some(t => t.id === alt.tarefa.id)) {
           plano.tarefas = [...plano.tarefas, alt.tarefa];
