@@ -15,11 +15,10 @@ import {
   horaParaMinutos, duracaoMinutos, toYMD,
 } from '../../utils/calendarUtils';
 
-const HORA_INI   = 1;  // timeline começa em 1h
-const HORA_FIM   = 23; // timeline termina em 23h
-const TOTAL_MIN  = (HORA_FIM - HORA_INI) * 60;
+const HORA_INI   = 0;  // timeline cobre o dia inteiro (0h)
+const HORA_FIM   = 24; // ...até a meia-noite seguinte (24h)
 const ALTURA_HORA  = 60; // px por hora
-const ALTURA_TOTAL = (HORA_FIM - HORA_INI) * ALTURA_HORA;
+const ALTURA_TOTAL = (HORA_FIM - HORA_INI) * ALTURA_HORA; // 24h * 60 = 1440px
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -43,22 +42,45 @@ export default function RoutineView({
     const mapa = {};
     semana.forEach(d => { mapa[d.toDateString()] = []; });
 
+    const FIM_DIA = 24 * 60; // minutos até a meia-noite
+
     const adicionar = (item, tipo) => {
-      const ocorrencias = ocorrenciasNaSemana(item, semana);
-      ocorrencias.forEach(d => {
+      const minutosIni = horaParaMinutos(item.hora);
+      if (minutosIni == null) return;
+      const dur = duracaoMinutos(item, 60);
+      const fimMin = minutosIni + dur;
+
+      ocorrenciasNaSemana(item, semana).forEach(d => {
+        // Parte do bloco no próprio dia da ocorrência
         const key = d.toDateString();
-        if (!(key in mapa)) return;
-        const minutosIni = horaParaMinutos(item.hora);
-        if (minutosIni == null) return;
-        const dur = duracaoMinutos(item, 60);
-        const topo = ((minutosIni - HORA_INI * 60) / 60) * ALTURA_HORA;
-        const altura = (dur / 60) * ALTURA_HORA;
-        if (topo < 0 || topo > ALTURA_TOTAL) return;
-        mapa[key].push({
-          item: { ...item, _tipo: tipo },
-          topo: Math.max(0, topo),
-          altura: Math.max(20, altura),
-        });
+        if (key in mapa) {
+          const topo = ((minutosIni - HORA_INI * 60) / 60) * ALTURA_HORA;
+          if (topo >= 0 && topo < ALTURA_TOTAL) {
+            // Clampa a altura ao fim do dia — um evento que cruza a meia-noite
+            // não estoura a grade; o restante vira um bloco de continuação amanhã.
+            const minVisiveis = Math.min(dur, FIM_DIA - minutosIni);
+            mapa[key].push({
+              item: { ...item, _tipo: tipo },
+              topo: Math.max(0, topo),
+              altura: Math.max(20, (minVisiveis / 60) * ALTURA_HORA),
+            });
+          }
+        }
+
+        // Compromisso que cruza a meia-noite → bloco de continuação no dia seguinte
+        if (fimMin > FIM_DIA) {
+          const prox = new Date(d);
+          prox.setDate(d.getDate() + 1);
+          const keyProx = prox.toDateString();
+          if (keyProx in mapa) {
+            const restante = fimMin - FIM_DIA; // minutos após a meia-noite
+            mapa[keyProx].push({
+              item: { ...item, _tipo: tipo, _continuacao: true },
+              topo: 0,
+              altura: Math.max(20, (restante / 60) * ALTURA_HORA),
+            });
+          }
+        }
       });
     };
 
@@ -82,9 +104,9 @@ export default function RoutineView({
       : `${ini.getDate()} ${MESES_LABEL[ini.getMonth()]} – ${fim.getDate()} ${MESES_LABEL[fim.getMonth()]}`;
   };
 
-  // BUG-028: length = HORA_FIM - HORA_INI gerava [1..22] — 23h nunca aparecia.
-  // +1 gera [1..23] incluindo o marcador final da linha das 23h.
-  const horas = Array.from({ length: HORA_FIM - HORA_INI + 1 }, (_, i) => HORA_INI + i);
+  // Timeline 0h–24h: 24 marcadores [0..23]. Cada linha tem ALTURA_HORA de altura,
+  // então a última (23h) tem um slot completo até a meia-noite (ALTURA_TOTAL).
+  const horas = Array.from({ length: HORA_FIM - HORA_INI }, (_, i) => HORA_INI + i);
 
   return (
     <div className="px-4 py-4 pb-8">
@@ -274,7 +296,8 @@ export default function RoutineView({
 function _calcularHoraFim(hora, duracao) {
   if (!hora || !duracao) return '';
   const [h, m] = hora.split(':').map(Number);
-  const totalMin = h * 60 + m + Number(duracao);
+  // Módulo 24h: um fim que passa da meia-noite mostra "01:00", não "25:00".
+  const totalMin = (h * 60 + m + Number(duracao)) % (24 * 60);
   const hf = Math.floor(totalMin / 60).toString().padStart(2, '0');
   const mf = (totalMin % 60).toString().padStart(2, '0');
   return `${hf}:${mf}`;
@@ -383,7 +406,8 @@ function ModalItem({ item, dia, onFechar, onEditar, onApagar, onRemoverDia }) {
                       if (f.hora && novaHoraFim) {
                         const [h, m] = f.hora.split(':').map(Number);
                         const [hf, mf] = novaHoraFim.split(':').map(Number);
-                        const diff = (hf * 60 + mf) - (h * 60 + m);
+                        let diff = (hf * 60 + mf) - (h * 60 + m);
+                        if (diff < 0) diff += 24 * 60; // fim no dia seguinte
                         if (diff > 0) duracao = diff;
                       }
                       return { ...f, horaFim: novaHoraFim, duracao };
@@ -453,7 +477,8 @@ function ModalAdicionar({ onFechar, onSalvar }) {
     if (form.horaInicio && form.horaFim) {
       const [hIni, mIni] = form.horaInicio.split(':').map(Number);
       const [hFim, mFim] = form.horaFim.split(':').map(Number);
-      const diff = (hFim * 60 + mFim) - (hIni * 60 + mIni);
+      let diff = (hFim * 60 + mFim) - (hIni * 60 + mIni);
+      if (diff < 0) diff += 24 * 60; // fim no dia seguinte (ex.: 22h → 01h)
       if (diff > 0) duracao = diff;
     }
 

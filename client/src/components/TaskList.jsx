@@ -277,20 +277,10 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle, co
       const norm = normalizarCompromisso(c, amanhaStr);
       return { ...norm, concluida: estaConcluido(c, amanhaStr, concluidasExt) };
     });
-  const idsAmanh = new Set(compAmanh.map(c => c.id));
 
-  // ── FUTURO: compromissos além de amanhã (mantém lógica existente via proximaOcorrencia)
-  const compFuturo = compromissos.filter(c => {
-    if (!c.titulo || idsHoje.has(c.id) || idsAmanh.has(c.id)) return false;
-    if (!c.recorrencia) return c.data && c.data > amanhaStr;
-    return true;  // recorrente: próxima ocorrência calculada por proximaOcorrencia
-  }).map(c => {
-    const norm = normalizarCompromisso(c);
-    return { ...norm, concluida: estaConcluido(c, norm.prazo, concluidasExt) };
-  }).filter(c => c.prazo && c.prazo > amanhaStr);
-
-  // Une os três buckets (dedup final por _viewId como segurança)
-  const compromissosNorm = [...compHoje, ...compAmanh, ...compFuturo];
+  // Painel do Dia mostra apenas dias próximos: HOJE + AMANHÃ.
+  // Compromissos além de amanhã ("Em breve") ficam só no calendário (aba Rotina).
+  const compromissosNorm = [...compHoje, ...compAmanh];
 
   // Une tarefas + compromissos e deduplica por _viewId — evita duplicatas
   // quando o mesmo item chega pelas duas props ou o array é percorrido duas vezes.
@@ -305,13 +295,13 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle, co
   const progresso  = todosItens.length > 0
     ? Math.round((concluidas.length / todosItens.length) * 100) : 0;
 
-  // Agrupa pendentes: atrasado → hoje → amanhã → futuro → sem data
-  const GRUPOS_ORDEM = ['atrasado', 'hoje', 'amanha', 'futuro', 'sem_data'];
+  // Agrupa pendentes: atrasado → hoje → amanhã → sem data
+  // "Em breve" (futuro) foi removido — Painel do Dia foca nos dias próximos.
+  const GRUPOS_ORDEM = ['atrasado', 'hoje', 'amanha', 'sem_data'];
   const GRUPOS_LABEL = {
     atrasado: '⚠️ Atrasadas',
     hoje:     '📌 Hoje',
     amanha:   '📅 Amanhã',
-    futuro:   '🗓 Em breve',
     sem_data: '📋 Sem prazo',
   };
 
