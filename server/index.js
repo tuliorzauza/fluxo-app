@@ -309,6 +309,9 @@ function validarDiasSemana(novoPlano, planoAnterior) {
 function posProcessar({ rawText, planoDoSupabase, messages, memoria }) {
   let { mensagem, modo, alteracoes, _planoLegado, perguntaFeita, quickReplies, memoriaUpdate, eventoGamificacao } = parseFloraResponse(rawText);
 
+  console.log('[FLORA-PARSE] alteracoes:', alteracoes ? JSON.stringify(alteracoes) : 'null');
+  console.log('[FLORA-PARSE] _planoLegado:', _planoLegado ? 'presente' : 'null');
+
   // BUG-026: ajustarDatasFuturas removida do fluxo de chat para não ressuscitar eventos expirados.
   // Flora gera datas corretas via REGRA DE DATAS. ajustarData() ainda converte aliases textuais.
 
@@ -340,7 +343,12 @@ function posProcessar({ rawText, planoDoSupabase, messages, memoria }) {
   // Mescla atualização de memória
   let memoriaAtualizada = memoria || { ...MEMORIA_INICIAL };
   if (memoriaUpdate) {
-    memoriaAtualizada = mesclarMemoria(memoriaAtualizada, memoriaUpdate);
+    try {
+      memoriaAtualizada = mesclarMemoria(memoriaAtualizada, memoriaUpdate);
+    } catch (errMemoria) {
+      console.error('[MEMORIA] Erro ao mesclar — ignorando memoriaUpdate:', errMemoria.message);
+      // Não deixa crash de memória matar o plano
+    }
   }
 
   // Atualiza gamificação
@@ -354,6 +362,15 @@ function posProcessar({ rawText, planoDoSupabase, messages, memoria }) {
     ...messages,
     { role: 'assistant', content: rawText },
   ], 24);
+
+  if (plano) {
+    const excecoesSalvas = (plano.compromissos || [])
+      .filter(c => c.recorrencia?.excecoes?.length > 0)
+      .map(c => ({ id: c.id, excecoes: c.recorrencia.excecoes }));
+    if (excecoesSalvas.length > 0) {
+      console.log('[FLORA-PARSE] excecoes no plano:', JSON.stringify(excecoesSalvas));
+    }
+  }
 
   return { mensagem, modo, plano, quickReplies, perguntaFeita, memoriaAtualizada, historicoAtualizado };
 }

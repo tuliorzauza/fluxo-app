@@ -63,7 +63,10 @@ export default function RoutineView({
 
     compromissos.forEach(c => adicionar(c, 'compromisso'));
     tarefas.forEach(t => {
-      if (t.concluida) return;
+      // Tarefas recorrentes: só pula se conclusão é desta semana
+      if (t.concluida && !t.recorrencia) return;
+      // Recorrentes concluídas: serão filtradas por data na ocorrenciasNaSemana
+      // (aparecerão na próxima ocorrência normalmente)
       if (getCategoria(t).id === 'lembrete') return;
       adicionar(t, 'tarefa');
     });
