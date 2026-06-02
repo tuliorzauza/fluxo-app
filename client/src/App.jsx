@@ -209,6 +209,29 @@ async function fetchComAuth(url, opcoes = {}) {
   return res;
 }
 
+// ── Poda de conclusões antigas ───────────────────────────────────────────────
+// Conclusões de itens recorrentes são gravadas como "id__YYYY-MM-DD". Em uso
+// prolongado isso acumula. Remove as ocorrências com data anterior ao limite
+// (padrão 90 dias). Chaves sem data (itens pontuais) nunca são removidas.
+function podarConcluidasAntigas(concluidas, diasLimite = 90) {
+  if (!concluidas || typeof concluidas !== 'object') return concluidas || {};
+  const limite = new Date();
+  limite.setDate(limite.getDate() - diasLimite);
+  const limiteYMD = limite.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  const resultado = {};
+  let removidos = 0;
+  for (const [chave, valor] of Object.entries(concluidas)) {
+    const idx = chave.lastIndexOf('__');
+    if (idx !== -1) {
+      const data = chave.slice(idx + 2);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(data) && data < limiteYMD) { removidos++; continue; }
+    }
+    resultado[chave] = valor;
+  }
+  if (removidos > 0) console.log(`[CONCLUIDAS] Poda: ${removidos} ocorrência(s) antiga(s) removida(s) (>${diasLimite}d)`);
+  return resultado;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
   // ── Autenticação ────────────────────────────────────────────────────────────
@@ -239,7 +262,7 @@ export default function App() {
   const [modoCaos, setModoCaos] = useState(false);
 
   // Storage independente de concluídas — nunca tocado pela Flora
-  const [concluidasExternas, setConcluidasExternas] = useState(() => ls_get(SK.concluidas) || {});
+  const [concluidasExternas, setConcluidasExternas] = useState(() => podarConcluidasAntigas(ls_get(SK.concluidas) || {}));
   // Ref sempre atualizado para uso dentro de updaters funcionais sem dependência de closure
   const concluidasRef = useRef(concluidasExternas);
   useEffect(() => { concluidasRef.current = concluidasExternas; }, [concluidasExternas]);
@@ -1127,8 +1150,9 @@ export default function App() {
         ls_set(SK.histApi, dados.historicoApi);
       }
       if (dados.tarefasConcluidas && Object.keys(dados.tarefasConcluidas).length) {
-        setConcluidasExternas(dados.tarefasConcluidas);
-        ls_set(SK.concluidas, dados.tarefasConcluidas);
+        const podadas = podarConcluidasAntigas(dados.tarefasConcluidas);
+        setConcluidasExternas(podadas);
+        ls_set(SK.concluidas, podadas);
       }
     } catch (err) {
       console.error('[AUTH] Erro em carregarDadosUsuario:', err);
