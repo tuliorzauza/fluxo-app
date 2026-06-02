@@ -122,6 +122,9 @@ function _formatarAgendaDia(comproms, dataYMD, hojeStr, horaAtualMinutos) {
     } else {
       linha = `  ${h}: ${c.titulo}`;
     }
+    // ID REAL do compromisso — Flora DEVE usar este id exato em add_excecao/update/delete.
+    // Sem isto, ela inventa IDs fantasma e as alteracoes viram no-op (compromisso nunca some).
+    if (c.id) linha += `  [id: ${c.id}]`;
     // Só adiciona classificação temporal para o dia de hoje
     if (ehHoje) {
       const classificacao = _classificarCompromisso(c, hojeStr, horaAtualMinutos);
@@ -273,6 +276,13 @@ ${diasSemana.map(dataYMD => {
       : '';
     return `${nomeDia} ${dataYMD} ${label}:\n${_formatarAgendaDia(comproms, dataYMD, hojeStr, horaAtualMinutos)}${linhasTarefas}\nLivre: ${_horariosLivres(comproms, dataYMD)}`;
   }).join('\n\n')}
+
+REGRA CRÍTICA DE IDs:
+Cada linha da agenda termina com [id: XXX] — esse é o ID REAL do compromisso.
+Para QUALQUER operação (add_excecao, update_compromisso, delete_compromisso)
+você DEVE copiar EXATAMENTE o id que aparece na agenda acima.
+NUNCA invente, adivinhe ou crie um id como "comp-trabalho-semana".
+Se o id não estiver visível na agenda, NÃO execute a operação — pergunte.
 
 REGRA CRÍTICA DE RECORRÊNCIA:
 Para compromissos recorrentes, o campo "data" é apenas a data
@@ -774,7 +784,8 @@ ter um compromisso em uma ou mais datas, INDEPENDENTE DO MOTIVO
 PASSO 1 — CONSULTAR A AGENDA:
   Olhe a agenda estruturada acima. Encontre o compromisso mencionado
   nas datas mencionadas. Identifique:
-  - O ID exato do compromisso
+  - O ID exato do compromisso — COPIE do campo [id: XXX] que aparece
+    na linha da agenda. NUNCA invente um id.
   - As datas exatas (formato YYYY-MM-DD)
   - Se é recorrente (precisa de add_excecao) ou pontual (precisa de delete_compromisso)
 
@@ -808,8 +819,9 @@ PASSO 3 — EXECUTAR APÓS CONFIRMAÇÃO:
 
 EXEMPLO COMPLETO:
   Usuário: "não trabalho quinta e sexta"
-  Flora consulta agenda → vê "Trabalho" (id: comp-trabalho-semana)
-  nas duas datas, quinta = 2026-06-04, sexta = 2026-06-05.
+  Flora consulta agenda → na linha de quinta e sexta vê:
+  "08h-17h: Trabalho  [id: comp-1748900000]" → COPIA esse id exato.
+  quinta = 2026-06-04, sexta = 2026-06-05.
   Também vê Luta na quinta e Academia na sexta.
 
   Flora: "Cancelar Trabalho de Qui 04/06 e Sex 05/06?
@@ -822,9 +834,10 @@ EXEMPLO COMPLETO:
   Flora: "Feito! Trabalho cancelado quinta e sexta.
   Luta e Academia mantidas normalmente."
   alteracoes: [
-    { "op": "add_excecao", "id": "comp-trabalho-semana", "data": "2026-06-04" },
-    { "op": "add_excecao", "id": "comp-trabalho-semana", "data": "2026-06-05" }
+    { "op": "add_excecao", "id": "comp-1748900000", "data": "2026-06-04" },
+    { "op": "add_excecao", "id": "comp-1748900000", "data": "2026-06-05" }
   ]
+  (o id "comp-1748900000" foi COPIADO da agenda, não inventado)
 
 REGRA ABSOLUTA:
   NUNCA retornar alteracoes: null quando há um cancelamento
