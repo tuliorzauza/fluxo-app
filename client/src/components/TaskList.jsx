@@ -39,6 +39,15 @@ function grupoData(prazo) {
 
 function prioOrdem(p) { return PRIORIDADE_CONFIG[p]?.ordem ?? 3; }
 
+// ── Conclusão de um item ──────────────────────────────────────────────────────
+// Itens recorrentes são concluídos POR OCORRÊNCIA: a chave é "id__data".
+// Assim um compromisso fixo marcado nesta semana volta como pendente na próxima.
+// Itens pontuais continuam por id (e respeitam o boolean do plano).
+function estaConcluido(item, prazo, concluidasExt) {
+  if (item.recorrencia) return !!concluidasExt[`${item.id}__${prazo}`];
+  return !!item.concluida || !!concluidasExt[item.id];
+}
+
 // ── Próxima ocorrência de item recorrente ─────────────────────────────────────
 function proximaOcorrencia(c) {
   // BUG-031: usar fuso Brasília para evitar off-by-one após 21h BRT
@@ -143,7 +152,7 @@ function TarefaItem({ tarefa, expanded, onToggle, onExpand }) {
         {/* Checkbox */}
         <button
           className="flex-shrink-0 transition-transform duration-100 active:scale-90"
-          onClick={(e) => { e.stopPropagation(); onToggle(tarefa.id); }}
+          onClick={(e) => { e.stopPropagation(); onToggle(tarefa.id, tarefa.prazo); }}
         >
           {tarefa.concluida
             ? <CheckCircle2 size={18} className="text-amber-500" />
@@ -211,7 +220,7 @@ function TarefaItem({ tarefa, expanded, onToggle, onExpand }) {
             </div>
           )}
           <button
-            onClick={() => onToggle(tarefa.id)}
+            onClick={() => onToggle(tarefa.id, tarefa.prazo)}
             className="ml-auto text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors"
           >
             Marcar como feito →
@@ -243,9 +252,13 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle, co
   })();
 
   // Filtra tarefas internas da Flora e adiciona _viewId para dedup/key
+  // Tarefas recorrentes usam a próxima ocorrência como prazo e conclusão por data.
   const tarefasUsuario = tarefas
     .filter(t => t.tipo !== 'flora')
-    .map(t => ({ ...t, _viewId: t.id, concluida: t.concluida || !!concluidasExt[t.id] }));
+    .map(t => {
+      const prazoT = t.recorrencia ? proximaOcorrencia(t) : t.prazo;
+      return { ...t, prazo: prazoT, _viewId: t.id, concluida: estaConcluido(t, prazoT, concluidasExt) };
+    });
 
   const hojeStr = hojeYMD();   // de planoUtils — BRT-safe
   const amanhaStr = amanhaYMD();
@@ -254,7 +267,7 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle, co
   const idsHoje = new Set((compromissosDoDia || []).map(c => c.id));
   const compHoje = (compromissosDoDia || []).map(c => {
     const norm = normalizarCompromisso(c, hojeStr);
-    return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };
+    return { ...norm, concluida: estaConcluido(c, hojeStr, concluidasExt) };
   });
 
   // ── AMANHÃ: usa getCompromissosDoDia centralizado, sem duplicar lógica na mão
@@ -262,7 +275,7 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle, co
     .filter(c => !idsHoje.has(c.id))  // dedup: itens diários já estão em HOJE
     .map(c => {
       const norm = normalizarCompromisso(c, amanhaStr);
-      return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };
+      return { ...norm, concluida: estaConcluido(c, amanhaStr, concluidasExt) };
     });
   const idsAmanh = new Set(compAmanh.map(c => c.id));
 
@@ -273,7 +286,7 @@ export default function TaskList({ tarefas = [], compromissos = [], onToggle, co
     return true;  // recorrente: próxima ocorrência calculada por proximaOcorrencia
   }).map(c => {
     const norm = normalizarCompromisso(c);
-    return { ...norm, concluida: norm.concluida || !!concluidasExt[c.id] };
+    return { ...norm, concluida: estaConcluido(c, norm.prazo, concluidasExt) };
   }).filter(c => c.prazo && c.prazo > amanhaStr);
 
   // Une os três buckets (dedup final por _viewId como segurança)

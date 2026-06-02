@@ -755,40 +755,41 @@ export default function App() {
   }, [aba, iniciarPlanoAcao]);
 
   // ── Toggle de tarefa ou compromisso ────────────────────────────────────
-  const toggleTarefa = useCallback((id) => {
+  const toggleTarefa = useCallback((id, dataYMD = null) => {
     let itemCompletado = null;
     let marcando = false; // direção do toggle, determinada dentro do updater
+    let chaveConclusao = id; // recorrente → "id__data"; pontual → "id"
 
     setPlano(prev => {
       if (!prev) return prev;
 
       const tarefa = prev.tarefas?.find(t => t.id === id);
-      let novo;
+      const compromisso = !tarefa ? prev.compromissos?.find(c => c.id === id) : null;
+      const item = tarefa || compromisso;
+      if (!item) return prev;
 
-      if (tarefa) {
-        // Estado efetivo = storage independente OU concluida no plano
-        const eraConcluidaEfetiva = !!concluidasRef.current[id] || tarefa.concluida;
-        marcando = !eraConcluidaEfetiva;
-        if (marcando) itemCompletado = tarefa;
-        novo = {
-          ...prev,
-          tarefas: prev.tarefas.map(t =>
-            t.id === id ? { ...t, concluida: marcando } : t
-          ),
-        };
-      } else {
-        const compromisso = prev.compromissos?.find(c => c.id === id);
-        if (!compromisso) return prev;
-        const eraConcluidaEfetiva = !!concluidasRef.current[id] || compromisso.concluida;
-        marcando = !eraConcluidaEfetiva;
-        if (marcando) itemCompletado = compromisso;
-        novo = {
-          ...prev,
-          compromissos: prev.compromissos.map(c =>
-            c.id === id ? { ...c, concluida: marcando } : c
-          ),
-        };
+      // Item recorrente: conclusão é POR OCORRÊNCIA (id + data da ocorrência).
+      // Sem isto, marcar uma vez deixava o item "feito" pra sempre nas semanas seguintes.
+      const recorrente = !!item.recorrencia;
+      chaveConclusao = recorrente && dataYMD ? `${id}__${dataYMD}` : id;
+
+      // Estado efetivo. Para recorrentes, IGNORA o boolean do plano (é global/compartilhado
+      // entre todas as ocorrências) e usa só o storage datado.
+      const eraConcluidaEfetiva = recorrente
+        ? !!concluidasRef.current[chaveConclusao]
+        : (!!concluidasRef.current[id] || item.concluida);
+      marcando = !eraConcluidaEfetiva;
+      if (marcando) itemCompletado = item;
+
+      // Recorrentes NÃO escrevem o boolean no plano — a verdade fica no storage datado.
+      if (recorrente) {
+        localStorage.setItem(SK.plano, JSON.stringify(prev));
+        return prev;
       }
+
+      const novo = tarefa
+        ? { ...prev, tarefas: prev.tarefas.map(t => t.id === id ? { ...t, concluida: marcando } : t) }
+        : { ...prev, compromissos: prev.compromissos.map(c => c.id === id ? { ...c, concluida: marcando } : c) };
 
       localStorage.setItem(SK.plano, JSON.stringify(novo));
       return novo;
@@ -798,9 +799,9 @@ export default function App() {
     setConcluidasExternas(prev => {
       const novo = { ...prev };
       if (marcando) {
-        novo[id] = true;
+        novo[chaveConclusao] = true;
       } else {
-        delete novo[id];
+        delete novo[chaveConclusao];
       }
       ls_set(SK.concluidas, novo);
       sincronizarTarefasConcluidas(novo);
