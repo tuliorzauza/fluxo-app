@@ -275,7 +275,9 @@ export function getProgressoNivel(pontos) {
 export function processarEventoGamificacao(memoria, evento, extra = {}) {
   if (!memoria) return { memoriaAtualizada: memoria, delta: 0, levelUp: null, novasBadges: [] };
 
-  const hoje = new Date().toISOString().split('T')[0];
+  // Data em BRT (UTC-3) — alinhada ao backend. toISOString() virava o dia após 21h
+  // BRT e quebrava/duplicava o streak.
+  const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
   const gam = JSON.parse(JSON.stringify(memoria.gamificacao || {
     pontos: 0, nivel: 1, streak: 0, ultimaAtividade: null,
     badges: [], historicoPontos: [], contadores: {}, recompensas: { pontosAcumulados: 0, resgatados: [], disponiveis: [] },

@@ -67,7 +67,13 @@ Varredura geral de backend e frontend antes de abrir ao mercado.
 
 #### AGUARDANDO AÇÃO DO USUÁRIO
 
-- **AUDIT-05 (MÉDIO-ALTO) — RLS desativado no Supabase:** script pronto em `supabase/enable-rls.sql`. Rodar no SQL Editor do Supabase. Não quebra o app (backend usa `service_role`, que bypassa RLS); protege contra acesso direto via anon key.
+- **AUDIT-05 (MÉDIO-ALTO) — RLS desativado no Supabase:** script pronto em `supabase/enable-rls.sql`. ✅ RODADO E VALIDADO pelo usuário em 2026-06-03. Confirmado que o frontend não faz `.from()` direto (só auth), então o app segue funcionando via backend (service_role).
+
+#### TERCEIRA LEVA — RESOLVIDOS
+
+- **DURAÇÃO — Flora chutava duração: RESOLVIDO.** Os exemplos de schema mostravam `"duracao": 60` como default preenchido e a Flora copiava. Regra reforçada (60 é só placeholder), schema anotado, exceções ampliadas (duração já conhecida da memória). `flora.js`.
+- **AUDIT-10 (MÉDIO) — Duplicação de TAREFAS: RESOLVIDO.** Simétrico ao AUDIT-04. `add_tarefa` em `aplicarDiffs` deduplicava só por `id`; a Flora gera id novo. Adicionado `chaveTarefa()` (título+prazo). `index.js`.
+- **AUDIT-11 (MÉDIO) — Streak em UTC quebrava após 21h BRT: RESOLVIDO.** Backend (`userMemory.js`) e frontend (`gamificacao.js`) calculavam `hoje` com `toISOString()` (UTC). Após 21h BRT o dia virava em UTC → streak duplicava/zerava indevidamente. Trocado para BRT (`toLocaleDateString('sv-SE', {timeZone})`). Também alinhado: notificações, pendências do dia e check-in noturno no `App.jsx` agora usam `hojeYMD()` em vez de UTC.
 
 ---
 

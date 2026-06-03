@@ -226,6 +226,11 @@ function chaveCompromisso(c) {
   return `${titulo}|${hora}|${recSig}`;
 }
 
+// Chave semântica de tarefa (título + prazo) — mesmo dedup do frontend (planoUtils).
+function chaveTarefa(t) {
+  return (t.titulo || '').toLowerCase().trim() + '|' + (t.prazo || '');
+}
+
 // ── BUG-ESTRUTURAL-2: Aplica diffs da Flora sobre o plano atual ───────────────
 function aplicarDiffs(planoAtual, alteracoes) {
   if (!alteracoes || alteracoes.length === 0) return planoAtual;
@@ -292,8 +297,16 @@ function aplicarDiffs(planoAtual, alteracoes) {
         break;
       }
       case 'add_tarefa':
-        if (alt.tarefa && !plano.tarefas.some(t => t.id === alt.tarefa.id)) {
-          plano.tarefas = [...plano.tarefas, alt.tarefa];
+        if (alt.tarefa) {
+          const chaveT = chaveTarefa(alt.tarefa);
+          const jaExiste = plano.tarefas.some(t =>
+            t.id === alt.tarefa.id || chaveTarefa(t) === chaveT
+          );
+          if (!jaExiste) {
+            plano.tarefas = [...plano.tarefas, alt.tarefa];
+          } else {
+            console.log('[DIFFS] add_tarefa ignorado (duplicata):', chaveT);
+          }
         }
         break;
       case 'update_tarefa':

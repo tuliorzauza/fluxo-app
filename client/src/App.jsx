@@ -17,7 +17,7 @@ import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
 import ModalConfiguracoes from './components/ModalConfiguracoes';
 
-import { calcularScore } from './utils/planoUtils';
+import { calcularScore, hojeYMD } from './utils/planoUtils';
 import {
   processarEventoGamificacao,
   getNivel,
@@ -115,7 +115,7 @@ function verificarNotificacoes(planoAtual, memoriaAtual, configAtual) {
   if (Notification.permission !== 'granted') return;
   const agora    = new Date();
   const hora     = agora.getHours() * 60 + agora.getMinutes();
-  const hojeStr  = agora.toISOString().split('T')[0];
+  const hojeStr  = hojeYMD(); // BRT-safe — compromissos são salvos em data BRT
 
   // Lembrete 30min antes de compromissos de hoje — só se toggle ativado
   if (configAtual?.notificacoes?.lembretes !== false) {
@@ -617,11 +617,11 @@ export default function App() {
   // ── Ritual de Fechamento — check-in noturno automático (20h-23h) ────────
   // Flag persistida no localStorage para sobreviver a reloads de página
   function jaDisparouCheckinHoje() {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeYMD(); // BRT-safe (planoUtils)
     return localStorage.getItem(`fluxo_checkin_disparado_${hoje}`) === 'true';
   }
   function marcarCheckinDisparadoHoje() {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeYMD(); // BRT-safe (planoUtils)
     localStorage.setItem(`fluxo_checkin_disparado_${hoje}`, 'true');
     // Remove flags de dias anteriores para não acumular lixo no localStorage
     Object.keys(localStorage)
@@ -637,7 +637,7 @@ export default function App() {
     const hora = new Date().getHours();
     if (hora < 20 || hora >= 23) return;
 
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeYMD(); // BRT-safe (planoUtils)
     const checkIns = memoria?.checkIns || [];
     const jaFezHoje = checkIns.some(c => c.data === hoje);
     if (jaFezHoje) return;

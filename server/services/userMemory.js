@@ -5,6 +5,12 @@
  * Atualizada pela Flora a cada interação relevante via campo "memoriaUpdate".
  */
 
+// Data de hoje em BRT (UTC-3). Railway roda em UTC; usar toISOString() aqui
+// quebrava o streak após 21h BRT (virava o dia em UTC). Alinha com agoraBrasilia().
+function hojeBrasilia() {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+}
+
 // ─── Thresholds de nível (espelho de client/src/utils/gamificacao.js) ─────────
 const NIVEL_THRESHOLDS = [
   { nivel: 1,  nome: 'Semente',     min: 0    },
@@ -327,7 +333,7 @@ function formatarMemoriaParaPrompt(memoria) {
 
   const checkIns = memoria.checkIns || [];
   if (checkIns.length) {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeBrasilia();
     const feitoHoje = checkIns.some(c => c.data === hoje);
     linhas.push(`Check-in noturno hoje: ${feitoHoje ? 'já feito' : 'pendente'}`);
   }
@@ -337,7 +343,7 @@ function formatarMemoriaParaPrompt(memoria) {
 
 // ─── Atualiza gamificação baseado em evento (chamado pelo servidor) ───────────
 function atualizarGamificacao(memoria, evento) {
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeBrasilia();
   const gam = JSON.parse(JSON.stringify(
     memoria.gamificacao || MEMORIA_INICIAL.gamificacao
   ));
