@@ -39,7 +39,9 @@ export default function WeekView({
     });
 
     tarefas.forEach(t => {
-      if (t.concluida) return;
+      // Recorrentes concluídas continuam aparecendo (conclusão é por ocorrência/data,
+      // igual ao RoutineView). Só pontuais somem ao concluir.
+      if (t.concluida && !t.recorrencia) return;
       // Lembretes (sem prazo nem horário) não aparecem no calendário
       if (getCategoria(t).id === 'lembrete') return;
       ocorrenciasNaSemana(t, semana).forEach(d => {
@@ -319,7 +321,7 @@ export default function WeekView({
                   </div>
                   <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                     {ev._tipo === 'tarefa' && onToggleTarefa && (
-                      <button onClick={() => onToggleTarefa(ev.id)}
+                      <button onClick={() => onToggleTarefa(ev.id, toYMD(diaSel))}
                         className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400 transition-colors" title="Concluir">
                         <Check size={12} />
                       </button>
