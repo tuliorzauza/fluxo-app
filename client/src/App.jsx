@@ -16,6 +16,7 @@ import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
 import ModalConfiguracoes from './components/ModalConfiguracoes';
 import { track, identifyUser, resetAnalytics } from './lib/analytics';
+import OQueAprendi from './components/OQueAprendi';
 
 import { calcularScore, hojeYMD, getCompromissosDoDia } from './utils/planoUtils';
 import {
@@ -283,6 +284,7 @@ export default function App() {
   const [mostrarTooltip,  setMostrarTooltip]  = useState(false);
   const [mostrarPerfil,   setMostrarPerfil]   = useState(false);
   const [mostrarConfig,   setMostrarConfig]   = useState(false);
+  const [mostrarAprendi,  setMostrarAprendi]  = useState(false);
   const tooltipRef = useRef(null);
 
   // ── Configurações do usuário ────────────────────────────────────────────────
@@ -1548,6 +1550,16 @@ export default function App() {
           onResetar={resetarPerfil}
           onLogout={handleLogout}
           onAbrirConfig={() => { setMostrarPerfil(false); setMostrarConfig(true); }}
+          onAbrirAprendi={() => { setMostrarPerfil(false); setMostrarAprendi(true); track('aprendi_aberto'); }}
+        />
+      )}
+
+      {/* ── Modal "O que aprendi sobre você" ─────────────────────────────── */}
+      {mostrarAprendi && (
+        <OQueAprendi
+          memoria={memoria}
+          perfil={perfil}
+          onFechar={() => setMostrarAprendi(false)}
         />
       )}
 
@@ -1592,7 +1604,7 @@ export default function App() {
 }
 
 // ── Modal de perfil ──────────────────────────────────────────────────────────
-function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig }) {
+function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig, onAbrirAprendi }) {
   const nome      = perfil?.nome || 'Você';
   const email     = sessao?.user?.email || '';
   const inicial   = nome.charAt(0).toUpperCase();
@@ -1666,6 +1678,14 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
         {/* Ações */}
         <div className="px-4 py-3 space-y-0.5">
           <button
+            onClick={onAbrirAprendi}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
+          >
+            <span className="text-base leading-none">🧠</span>
+            O que a Flora aprendeu
+            <span className="ml-auto text-[10px] text-amber-500/70">novo</span>
+          </button>
+          <button
             onClick={onAbrirConfig}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
           >
@@ -1696,7 +1716,6 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
         >
           <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-4 pt-3 pb-2">Em breve</p>
           {[
-            { icon: '🧠', label: 'O que aprendi sobre você' },
             { icon: '📊', label: 'Resumo da semana' },
           ].map(({ icon, label }) => (
             <div key={label} className="flex items-center gap-3 px-4 py-2.5 opacity-40">
