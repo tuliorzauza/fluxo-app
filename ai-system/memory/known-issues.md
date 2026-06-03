@@ -36,6 +36,41 @@ Criar memória técnica contínua para:
 
 ---
 
+### [2026-06-03] FEATURES DO ROADMAP — medir → provar valor → cobrar
+
+Implementadas na ordem que faz sentido para um app de IA pré-mercado.
+
+**1. PostHog (analytics) — `9069405`**
+- `client/src/lib/analytics.js`: wrapper privacy-first. autocapture e session
+  recording DESLIGADOS. Só eventos explícitos, sem PII/conteúdo.
+- Eventos: login, onboarding_completo, mensagem_enviada, aba_aberta,
+  item_concluido, nivel_subiu, aprendi_aberto, paywall_view, checkout_*.
+- **Ativar:** criar projeto no PostHog → definir `VITE_POSTHOG_KEY` (e opcional
+  `VITE_POSTHOG_HOST`) nas env vars da Vercel. Sem a chave = no-op.
+
+**2. "O que aprendi sobre você" — `800bf13`**
+- `client/src/components/OQueAprendi.jsx`: tela de valor que mostra a memória
+  estruturada de forma calorosa. Só lê dados existentes. Acessível pelo perfil.
+- Sem dependência externa — já está no ar.
+
+**3. Stripe (freemium por LIMITE DE MENSAGENS) — `9c8f938` + `9089c06`**
+- Modelo: free = 10 msg/dia BRT (`LIMITE_MENSAGENS_FREE`), pro = ilimitado.
+- Backend: enforcement não-burlável (402 LIMITE_ATINGIDO), fail-open em erro,
+  msgs de sistema não contam. Endpoints checkout/webhook/assinatura.
+- Frontend: paywall (mensal/anual), badge Pro, estado de assinatura.
+- **Ativar (passos do usuário):**
+  1. Rodar `supabase/stripe-setup.sql` no SQL Editor do Supabase.
+  2. Criar conta Stripe + produto com 2 prices (mensal e anual).
+  3. Criar endpoint de webhook no Stripe apontando para
+     `https://fluxo-app-production.up.railway.app/api/stripe/webhook`
+     (eventos: checkout.session.completed, customer.subscription.updated/deleted).
+  4. Definir no Railway: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+     `STRIPE_PRICE_MENSAL`, `STRIPE_PRICE_ANUAL`.
+  5. (Opcional) na Vercel: `VITE_PRECO_MENSAL`, `VITE_PRECO_ANUAL` (só exibição).
+- Sem as chaves: checkout responde 503 e o limite continua valendo (free).
+
+---
+
 ### [2026-06-03] AUDITORIA PRÉ-MERCADO — Revisão senior de fragilidades
 
 Varredura geral de backend e frontend antes de abrir ao mercado.
