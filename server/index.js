@@ -21,6 +21,33 @@ const {
   salvarPerfil,
   salvarTarefasConcluidas,
 } = require('./services/dadosUsuario');
+const {
+  LIMITE_MENSAGENS_FREE, getAssinatura, ehPro, getUsoHoje, incrementarUso,
+  upsertAssinatura, getUserIdPorCustomer,
+} = require('./services/assinatura');
+const { stripeAtivo, criarCheckout, construirEvento, getSubscription } = require('./services/stripe');
+
+// Tags de mensagem disparada pelo sistema (não contam no limite freemium).
+const RE_MSG_SISTEMA = /^\[(RITUAL_FECHAMENTO|ROTINA_RETORNO|Sistema|MODO_CAOS)\]/;
+
+// Checa o limite freemium. Retorna { permitido, restantes } — fail-open em erro.
+async function checarLimiteMensagens(userId, input) {
+  if (RE_MSG_SISTEMA.test(input || '')) return { permitido: true, sistema: true };
+  try {
+    const assinatura = await getAssinatura(userId);
+    if (ehPro(assinatura)) return { permitido: true, pro: true };
+    const hoje = toYMDBrasilia(agoraBrasilia());
+    const usados = await getUsoHoje(userId, hoje);
+    if (usados >= LIMITE_MENSAGENS_FREE) {
+      return { permitido: false, limite: LIMITE_MENSAGENS_FREE, usados };
+    }
+    await incrementarUso(userId, hoje);
+    return { permitido: true, restantes: LIMITE_MENSAGENS_FREE - usados - 1 };
+  } catch (e) {
+    console.error('[LIMITE] erro ao checar (liberando):', e.message);
+    return { permitido: true, falhou: true }; // fail-open: nunca travar por erro de infra
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -455,7 +482,12 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' }));
+// Captura o corpo cru (req.rawBody) — necessário para validar a assinatura do
+// webhook do Stripe, que precisa dos bytes exatos antes do parse.
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -488,6 +520,16 @@ app.post('/api/processar/stream', async (req, res) => {
 
   if (!input || input.trim().length === 0) {
     return res.status(400).json({ erro: 'Input vazio' });
+  }
+
+  // ── Limite freemium — ANTES dos headers SSE (responde 402 limpo) ────────────
+  const lim = await checarLimiteMensagens(userId, input);
+  if (!lim.permitido) {
+    return res.status(402).json({
+      erro: 'Você atingiu o limite diário de mensagens do plano gratuito.',
+      codigo: 'LIMITE_ATINGIDO',
+      limite: lim.limite,
+    });
   }
 
   // Cabeçalhos SSE — só depois da auth estar confirmada
@@ -589,6 +631,16 @@ app.post('/api/processar', autenticarUsuario, async (req, res) => {
 
     if (!input || input.trim().length === 0) {
       return res.status(400).json({ erro: 'Input vazio' });
+    }
+
+    // ── Limite freemium ─────────────────────────────────────────────────────
+    const lim = await checarLimiteMensagens(req.userId, input);
+    if (!lim.permitido) {
+      return res.status(402).json({
+        erro: 'Você atingiu o limite diário de mensagens do plano gratuito.',
+        codigo: 'LIMITE_ATINGIDO',
+        limite: lim.limite,
+      });
     }
 
     // BUG-ESTRUTURAL-2: carrega plano autoritativo do Supabase para aplicar diffs
@@ -983,6 +1035,103 @@ Retorne JSON no formato padrão.`;
   } catch (error) {
     console.error('Erro no plano-acao:', error.message);
     res.status(500).json({ erro: 'Erro interno', detalhe: error.message });
+  }
+});
+
+// ── Assinatura: status + uso do dia ───────────────────────────────────────────
+app.get('/api/usuario/assinatura', autenticarUsuario, async (req, res) => {
+  try {
+    const assinatura = await getAssinatura(req.userId);
+    const pro = ehPro(assinatura);
+    const hoje = toYMDBrasilia(agoraBrasilia());
+    const usados = pro ? 0 : await getUsoHoje(req.userId, hoje);
+    res.json({
+      plano:      pro ? 'pro' : 'free',
+      status:     assinatura.status || 'inativa',
+      periodoFim: assinatura.periodo_fim || null,
+      limiteDia:  LIMITE_MENSAGENS_FREE,
+      usadosHoje: usados,
+      restantes:  pro ? null : Math.max(0, LIMITE_MENSAGENS_FREE - usados),
+      ilimitado:  pro,
+    });
+  } catch (e) {
+    console.error('[ASSINATURA] erro:', e.message);
+    res.status(500).json({ erro: 'Erro ao carregar assinatura' });
+  }
+});
+
+// ── Stripe: cria sessão de checkout (mensal ou anual) ─────────────────────────
+app.post('/api/stripe/checkout', autenticarUsuario, async (req, res) => {
+  if (!stripeAtivo()) return res.status(503).json({ erro: 'Pagamentos ainda não configurados' });
+  try {
+    const plano = req.body?.plano === 'anual' ? 'anual' : 'mensal';
+    const origin = req.headers.origin || 'https://fluxo-app-zeta.vercel.app';
+    const assinatura = await getAssinatura(req.userId);
+    const session = await criarCheckout({
+      userId:     req.userId,
+      email:      req.user?.email,
+      plano,
+      customerId: assinatura?.stripe_customer_id || null,
+      sucessoUrl: `${origin}/?assinatura=sucesso`,
+      cancelUrl:  `${origin}/?assinatura=cancelada`,
+    });
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error('[STRIPE] checkout erro:', e.message);
+    res.status(500).json({ erro: 'Erro ao iniciar checkout', detalhe: e.message });
+  }
+});
+
+// ── Stripe: webhook (sem auth — validado pela assinatura do Stripe) ───────────
+app.post('/api/stripe/webhook', async (req, res) => {
+  let evento;
+  try {
+    evento = construirEvento(req.rawBody, req.headers['stripe-signature']);
+  } catch (e) {
+    console.error('[STRIPE] webhook assinatura inválida:', e.message);
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
+
+  try {
+    if (evento.type === 'checkout.session.completed') {
+      const s = evento.data.object;
+      const userId = s.client_reference_id || s.metadata?.userId;
+      if (userId) {
+        const sub = await getSubscription(s.subscription);
+        await upsertAssinatura(userId, {
+          plano:  'pro',
+          status: 'ativa',
+          stripe_customer_id:     s.customer || null,
+          stripe_subscription_id: s.subscription || null,
+          periodo_fim: sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+        });
+        console.log('[STRIPE] assinatura ativada:', userId);
+      }
+    } else if (evento.type === 'customer.subscription.updated') {
+      const sub = evento.data.object;
+      const userId = sub.metadata?.userId || await getUserIdPorCustomer(sub.customer);
+      if (userId) {
+        const ativo = sub.status === 'active' || sub.status === 'trialing';
+        await upsertAssinatura(userId, {
+          plano:  ativo ? 'pro' : 'free',
+          status: ativo ? 'ativa' : (sub.status === 'past_due' ? 'inadimplente' : 'cancelada'),
+          stripe_customer_id:     sub.customer || null,
+          stripe_subscription_id: sub.id || null,
+          periodo_fim: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+        });
+      }
+    } else if (evento.type === 'customer.subscription.deleted') {
+      const sub = evento.data.object;
+      const userId = sub.metadata?.userId || await getUserIdPorCustomer(sub.customer);
+      if (userId) {
+        await upsertAssinatura(userId, { plano: 'free', status: 'cancelada' });
+        console.log('[STRIPE] assinatura cancelada:', userId);
+      }
+    }
+    res.json({ received: true });
+  } catch (e) {
+    console.error('[STRIPE] erro ao processar webhook:', e.message);
+    res.status(500).json({ erro: 'Erro no webhook' });
   }
 });
 
