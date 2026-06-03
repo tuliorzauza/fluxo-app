@@ -15,6 +15,7 @@ import PontosAnimados  from './components/gamificacao/PontosAnimados';
 import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
 import ModalConfiguracoes from './components/ModalConfiguracoes';
+import { track, identifyUser, resetAnalytics } from './lib/analytics';
 
 import { calcularScore, hojeYMD, getCompromissosDoDia } from './utils/planoUtils';
 import {
@@ -310,6 +311,7 @@ export default function App() {
       console.log('[AUTH] evento:', event, '| sessão:', session ? 'presente' : 'ausente');
 
       if (event === 'SIGNED_OUT') {
+        resetAnalytics();
         setSessao(null);
         setPlano(null);
         setMensagens([]);
@@ -326,12 +328,17 @@ export default function App() {
 
       // Carrega dados apenas nos eventos que indicam login novo ou sessão inicial
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+        identifyUser(session.user?.id); // associa eventos ao usuário (só UUID)
+        if (event === 'SIGNED_IN') track('login');
         carregarDadosUsuarioRef.current?.();
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Analytics: registra qual aba o usuário abre (uso de features)
+  useEffect(() => { track('aba_aberta', { aba }); }, [aba]);
 
   // Boas-vindas: exibe primeira mensagem da Flora se o histórico ainda está vazio
   useEffect(() => {
@@ -380,6 +387,7 @@ export default function App() {
       const msgFn = MENSAGENS_NIVEL[nivelNovo];
       const mensagem = msgFn ? msgFn(nome?.split(' ')[0] || '') : null;
       setCelebracaoNivel({ ...nivelInfo, mensagem });
+      track('nivel_subiu', { nivel: nivelNovo });
     }
   }, []);
 
@@ -409,6 +417,7 @@ export default function App() {
     setOnboardingFeito(true);
     ls_set(SK.perfil, respostas);
     ls_set(SK.onboarding, true);
+    track('onboarding_completo'); // evento de ativação — funil principal
 
     // Badge de onboarding
     const memoriaBase = ls_get(SK.memoria) || { gamificacao: { ...GAM_INICIAL } };
@@ -462,6 +471,7 @@ export default function App() {
 
     // Mensagens de sistema (tags internas) não aparecem como balão do usuário
     const ehMensagemSistema = /^\[(RITUAL_FECHAMENTO|ROTINA_RETORNO|Sistema|MODO_CAOS)\]/.test(input);
+    track('mensagem_enviada', { sistema: ehMensagemSistema }); // sem conteúdo, só metadado
     const novasMensagens = ehMensagemSistema
       ? [...mensagens]
       : [...mensagens, { tipo: 'user', texto: input, timestamp: new Date().toISOString() }];
@@ -835,6 +845,7 @@ export default function App() {
 
     // Gamificação — roda após o updater, usando o item capturado
     if (itemCompletado) {
+      track('item_concluido'); // só dispara ao marcar (itemCompletado só existe em marcando)
       const memoriaBase = memoria || { gamificacao: { ...GAM_INICIAL } };
       const badges = memoriaBase.gamificacao?.badges || [];
       const tituloItem = itemCompletado.titulo || '';
