@@ -221,6 +221,15 @@ function mesclarMemoria(memoria, updates) {
 }
 
 // ─── Formata memória como texto para injetar no prompt ───────────────────────
+// Helper: normaliza campo para array antes de chamar .join().
+// Campos do Supabase podem chegar como string, null ou undefined após
+// gravação corrompida — isso previne "TypeError: x.join is not a function".
+function _arr(campo) {
+  if (Array.isArray(campo)) return campo;
+  if (campo == null) return [];
+  return [String(campo)];
+}
+
 function formatarMemoriaParaPrompt(memoria) {
   if (!memoria) return '(sem dados salvos ainda)';
   const linhas = [];
@@ -253,10 +262,10 @@ function formatarMemoriaParaPrompt(memoria) {
   if (ac.localizacao)         ai.push(`local: ${ac.localizacao}`);
   if (ac.distanciaDoTrabalho) ai.push(`dist. trabalho: ${ac.distanciaDoTrabalho}`);
   if (ac.distanciaDeCasa)     ai.push(`dist. casa: ${ac.distanciaDeCasa}`);
-  if (ac.horarios?.length)    ai.push(`horários: ${ac.horarios.join(', ')}`);
+  if (ac.horarios?.length)    ai.push(`horários: ${_arr(ac.horarios).join(', ')}`);
   if (ai.length) linhas.push(`Academia: ${ai.join(', ')}`);
 
-  if (memoria.atividades?.lista?.length) linhas.push(`Atividades: ${memoria.atividades.lista.join(', ')}`);
+  if (memoria.atividades?.lista?.length) linhas.push(`Atividades: ${_arr(memoria.atividades.lista).join(', ')}`);
 
   const sono = memoria.sono || {};
   const si = [];
@@ -281,24 +290,24 @@ function formatarMemoriaParaPrompt(memoria) {
   if (fi.length) linhas.push(`Finanças: ${fi.join(', ')}`);
 
   const obj = memoria.objetivos || {};
-  if (obj.curto?.length)  linhas.push(`Objetivos (curto): ${obj.curto.join('; ')}`);
-  if (obj.medio?.length)  linhas.push(`Objetivos (médio): ${obj.medio.join('; ')}`);
-  if (obj.longo?.length)  linhas.push(`Objetivos (longo): ${obj.longo.join('; ')}`);
-  if (obj.sonhos?.length) linhas.push(`Sonhos: ${obj.sonhos.join('; ')}`);
-  if (obj.medos?.length)  linhas.push(`Medos: ${obj.medos.join('; ')}`);
+  if (obj.curto?.length)  linhas.push(`Objetivos (curto): ${_arr(obj.curto).join('; ')}`);
+  if (obj.medio?.length)  linhas.push(`Objetivos (médio): ${_arr(obj.medio).join('; ')}`);
+  if (obj.longo?.length)  linhas.push(`Objetivos (longo): ${_arr(obj.longo).join('; ')}`);
+  if (obj.sonhos?.length) linhas.push(`Sonhos: ${_arr(obj.sonhos).join('; ')}`);
+  if (obj.medos?.length)  linhas.push(`Medos: ${_arr(obj.medos).join('; ')}`);
 
   const pt = memoria.perdaTempo || {};
-  if (pt.identificados?.length) linhas.push(`Onde perde tempo: ${pt.identificados.join('; ')}`);
+  if (pt.identificados?.length) linhas.push(`Onde perde tempo: ${_arr(pt.identificados).join('; ')}`);
 
   if (memoria.pessoasImportantes?.lista?.length) {
-    linhas.push(`Pessoas importantes: ${memoria.pessoasImportantes.lista.join(', ')}`);
+    linhas.push(`Pessoas importantes: ${_arr(memoria.pessoasImportantes.lista).join(', ')}`);
   }
 
   const gam = memoria.gamificacao || {};
   if (gam.pontos > 0) {
     const nivelInfo = NIVEL_THRESHOLDS.slice().reverse().find(n => gam.pontos >= n.min) || NIVEL_THRESHOLDS[0];
     linhas.push(`Gamificação: ${gam.pontos} pts · ${nivelInfo.nome} (Nv.${gam.nivel}) · Streak ${gam.streak} dias`);
-    if (gam.badges?.length > 0) linhas.push(`  Conquistas: ${gam.badges.slice(-5).join(', ')}`);
+    if (gam.badges?.length > 0) linhas.push(`  Conquistas: ${_arr(gam.badges).slice(-5).join(', ')}`);
   }
 
   // Defesa: notas pode estar salvo como string se Flora retornou sem array — normaliza
@@ -306,13 +315,13 @@ function formatarMemoriaParaPrompt(memoria) {
   if (notasArr.length) linhas.push(`Notas: ${notasArr.slice(-5).join('; ')}`);
 
   const rot = memoria.rotina || {};
-  if (rot.comprometida?.length) linhas.push(`Rotina inegociável: ${rot.comprometida.join(', ')}`);
-  if (rot.flexiveis?.length)    linhas.push(`Rotina flexível: ${rot.flexiveis.join(', ')}`);
+  if (rot.comprometida?.length) linhas.push(`Rotina inegociável: ${_arr(rot.comprometida).join(', ')}`);
+  if (rot.flexiveis?.length)    linhas.push(`Rotina flexível: ${_arr(rot.flexiveis).join(', ')}`);
   if (rot.ritmoAceito)          linhas.push(`Ritmo aceito: ${rot.ritmoAceito}`);
   if (rot.pausas?.length) {
     const pausasAtivas = rot.pausas.filter(p => !p.dataEstimadaRetorno || new Date(p.dataEstimadaRetorno) >= new Date());
     if (pausasAtivas.length) {
-      linhas.push(`Pausas ativas: ${pausasAtivas.map(p => `${p.motivo} (${p.atividades?.join(', ')})`).join('; ')}`);
+      linhas.push(`Pausas ativas: ${pausasAtivas.map(p => `${p.motivo} (${_arr(p.atividades).join(', ')})`).join('; ')}`);
     }
   }
 
