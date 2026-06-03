@@ -36,6 +36,38 @@ Criar memória técnica contínua para:
 
 ---
 
+### [2026-06-03] AUDITORIA PRÉ-MERCADO — Revisão senior de fragilidades
+
+Varredura geral de backend e frontend antes de abrir ao mercado.
+
+#### RESOLVIDOS nesta auditoria
+
+**AUDIT-01 (CRÍTICO) — Endpoint `/api/estado-semana` sem autenticação**
+- **Causa:** o endpoint chamava a Claude API mas não tinha o middleware `autenticarUsuario`. O frontend (`EstadoSemana.jsx`) chamava com `fetch` puro, sem token.
+- **Impacto:** qualquer pessoa na internet podia chamar o endpoint e torrar créditos da Anthropic (DoS financeiro). Bloqueador de mercado.
+- **Solução:** adicionado `autenticarUsuario` ao endpoint; `EstadoSemana.jsx` agora envia `Authorization: Bearer <token>` da sessão Supabase. Se faltar token, o card degrada para o fallback determinístico (`getFallback`).
+
+**AUDIT-02 (MÉDIO) — Segredos e JWTs logados**
+- **Causa:** logs imprimiam prefixos da `SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY` e tokens JWT (`supabase.js`, `index.js`, `auth.js`, `App.jsx`, `EstadoSemana.jsx`).
+- **Impacto:** vazamento de material sensível nos logs do Railway/console do browser.
+- **Solução:** logs de segredo reduzidos a booleano de presença; logs de token removidos.
+
+**AUDIT-03 (BAIXO-MÉDIO) — `.single()` gerava erro PGRST116 para usuário novo**
+- **Causa:** `carregarDadosUsuario` usava `.single()` nas 5 tabelas; sem linha (usuário novo) o PostgREST retorna erro PGRST116.
+- **Impacto:** ruído de erro nos logs a cada primeiro acesso; mascarava erros reais.
+- **Solução:** trocado para `.maybeSingle()` (retorna data:null sem erro).
+
+#### REPORTADOS (não corrigidos — exigem decisão ou mudança maior)
+
+- **AUDIT-04 (MÉDIO) — Duplicação de compromissos:** `aplicarDiffs` (op `add_compromisso`) deduplica só por `id`, mas a Flora gera `id` novo a cada criação (`comp-${Date.now()}`). Se ela recriar o mesmo compromisso lógico, surgem duplicatas no calendário. Recomendado: dedup semântico por `titulo`+`hora`+`diasSemana`/`data` (como já existe para tarefas em `preservarEstadosTarefas`).
+- **AUDIT-05 (MÉDIO) — RLS desativado no Supabase:** com `service_role` no backend e sem RLS, qualquer falha de autorização expõe dados de todos os usuários. Reativar antes de escalar.
+- **AUDIT-06 (MÉDIO) — CORS permissivo:** regex `/\.vercel\.app$/` libera qualquer subdomínio `*.vercel.app`. Restringir ao domínio de produção.
+- **AUDIT-07 (BAIXO) — Onboarding pode perder compromissos fixos:** `fluxo_compromissos_fixos_pendentes` é removido do localStorage ANTES do envio (dentro do setTimeout). Se o componente desmontar ou a rede falhar nos ~1,5s, os fixos se perdem sem retry.
+- **AUDIT-08 (BAIXO) — Check-in noturno pode ser cancelado pro dia:** a flag `marcarCheckinDisparadoHoje()` é setada antes do setTimeout de 1,2s; se `memoria` mudar nesse intervalo, o cleanup cancela o timer mas a flag impede novo disparo.
+- **AUDIT-09 (BAIXO) — `dataHoraAtual` sem timezone:** `enviarMensagem` monta a data com TZ do browser, enquanto o prompt usa `agoraBrasilia()` (BRT). Usuário fora do BR vê duas horas divergentes no prompt.
+
+---
+
 ### [2026-05-21] BUG-001 — Botão de notificações não disparava prompt de permissão
 
 **Sintoma:** Ícone 🔔 visível no header mas clique não abria prompt de permissão.

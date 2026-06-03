@@ -1,12 +1,14 @@
 const { supabase } = require('./supabase');
 
 async function carregarDadosUsuario(userId) {
+  // maybeSingle(): retorna data:null sem erro quando não há linha (usuário novo).
+  // single() gerava erro PGRST116 ruidoso a cada primeiro acesso.
   const [perfil, plano, memoria, historico, tarefasConcluidas] = await Promise.all([
-    supabase.from('perfis').select('*').eq('id', userId).single(),
-    supabase.from('planos').select('*').eq('user_id', userId).single(),
-    supabase.from('memorias').select('*').eq('user_id', userId).single(),
-    supabase.from('historicos').select('*').eq('user_id', userId).single(),
-    supabase.from('tarefas_concluidas').select('*').eq('user_id', userId).single(),
+    supabase.from('perfis').select('*').eq('id', userId).maybeSingle(),
+    supabase.from('planos').select('*').eq('user_id', userId).maybeSingle(),
+    supabase.from('memorias').select('*').eq('user_id', userId).maybeSingle(),
+    supabase.from('historicos').select('*').eq('user_id', userId).maybeSingle(),
+    supabase.from('tarefas_concluidas').select('*').eq('user_id', userId).maybeSingle(),
   ]);
 
   console.log('[LOAD] Dados encontrados para userId:', userId, {

@@ -1,7 +1,8 @@
 require('dotenv').config();
-console.log('[ENV CHECK] SUPABASE_URL:', process.env.SUPABASE_URL);
-console.log('[ENV CHECK] SUPABASE_SERVICE_KEY (primeiros 20):', process.env.SUPABASE_SERVICE_KEY?.slice(0, 20));
-console.log('[ENV CHECK] ANTHROPIC_API_KEY (primeiros 20):', process.env.ANTHROPIC_API_KEY?.slice(0, 20));
+// Nunca logar valores de segredos (mesmo prefixos) — só presença.
+console.log('[ENV CHECK] SUPABASE_URL:', !!process.env.SUPABASE_URL,
+  '| SERVICE_KEY:', !!process.env.SUPABASE_SERVICE_KEY,
+  '| ANTHROPIC_KEY:', !!process.env.ANTHROPIC_API_KEY);
 const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -422,26 +423,18 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ── Rota streaming SSE — conversa com a Flora ─────────────────────────────────
 // Auth inline (não como middleware separado) para garantir ordem correta com SSE
 app.post('/api/processar/stream', async (req, res) => {
-  console.log('[SERVER] Authorization header recebido:', req.headers.authorization?.slice(0, 30));
   // ── Validar token ANTES de qualquer header SSE ──────────────────────────────
   const authHeader = req.headers.authorization;
-  console.log('[SSE] Authorization header presente:', !!authHeader,
-    authHeader ? `| primeiros 20: ${authHeader.slice(0, 27)}...` : '');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ erro: 'Token de autenticação necessário', codigo: 'NO_TOKEN' });
   }
 
   const token = authHeader.replace('Bearer ', '');
-  console.log('[SSE] Token (primeiros 20 chars):', token.slice(0, 20) + '...');
 
   let userId;
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    console.log('[SSE] getUser resultado:', error ? `ERRO: ${error.message}` : `OK — userId: ${user?.id}`);
-    console.log('[SERVER] supabase.auth.getUser resultado:');
-    console.log('[SERVER] user:', user?.id);
-    console.log('[SERVER] error:', error?.message, error?.status);
     if (error || !user) {
       return res.status(401).json({ erro: 'Token inválido ou expirado', codigo: 'INVALID_TOKEN' });
     }
@@ -752,7 +745,7 @@ function calcularMetricasSemana(compromissos, datasSemanaSemana) {
 }
 
 // ── Estado da Semana — análise em linguagem natural via Claude ────────────────
-app.post('/api/estado-semana', async (req, res) => {
+app.post('/api/estado-semana', autenticarUsuario, async (req, res) => {
   const { planoAtual, scoreDiscreto = 0, rotina = null } = req.body;
 
   // Sem plano: resposta neutra

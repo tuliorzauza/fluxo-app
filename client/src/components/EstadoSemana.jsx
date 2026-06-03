@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lightbulb } from 'lucide-react';
 import { hojeYMD } from '../utils/planoUtils';
+import { supabase } from '../lib/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -69,13 +70,6 @@ export default function EstadoSemana({ plano, onVerPlano }) {
   useEffect(() => {
     if (!plano) return;
 
-    console.log('ESTADO SEMANA DEBUG:', {
-      hash: calcularHashAgenda(plano),
-      hashRef: hashRef.current,
-      cache: lerCache(),
-      hoje: hojeYMD()
-    });
-
     const hash = calcularHashAgenda(plano);
 
     // Mesmo hash desde o último fetch — não reprocessar
@@ -100,18 +94,26 @@ export default function EstadoSemana({ plano, onVerPlano }) {
     setLoading(true);
     const rotina = lerRotina();
 
-    fetch(`${API_URL}/api/estado-semana`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ planoAtual: plano, scoreDiscreto, rotina }),
-    })
-      .then(r => r.json())
+    // Endpoint autenticado (chama a Claude API) — envia o token da sessão.
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        const token = session?.access_token;
+        return fetch(`${API_URL}/api/estado-semana`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ planoAtual: plano, scoreDiscreto, rotina }),
+        });
+      })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`estado-semana ${r.status}`))))
       .then(data => {
         setEstado(data);
         salvarCache(data, hash);
         setLoading(false);
       })
-      .catch(() => { setLoading(false); });
+      .catch(() => { setLoading(false); }); // degrada para o fallback determinístico
   }, [plano, scoreDiscreto]);
 
   if (!plano) return null;
