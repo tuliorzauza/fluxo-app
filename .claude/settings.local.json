@@ -47,7 +47,14 @@
       "Bash(node -e \"const f = require\\('./server/services/flora.js'\\); console.log\\('flora.js carregou OK'\\);\")",
       "Bash(ls /mnt/skills/public/)",
       "Bash(node --check server/index.js)",
-      "Bash(node --check server/services/flora.js)"
+      "Bash(node --check server/services/flora.js)",
+      "Bash(ls \"C:\\\\Users\\\\W10\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\8643e8d5-f722-4250-ad0b-ea4d0be554d9\\\\6cfbdd72-1643-4011-8695-58fd62fa1d4f\\\\skills\\\\\")",
+      "Bash(ls '/mnt/c/Users/W10/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/8643e8d5-f722-4250-ad0b-ea4d0be554d9/6cfbdd72-1643-4011-8695-58fd62fa1d4f/skills/')",
+      "Bash(node --check server/services/userMemory.js)",
+      "Bash(node --check server/middleware/auth.js)",
+      "Bash(node --check server/services/supabase.js)",
+      "Bash(node --check server/services/dadosUsuario.js)",
+      "Bash(git rm *)"
     ]
   }
 }

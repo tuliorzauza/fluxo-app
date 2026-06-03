@@ -11,7 +11,6 @@ import ChatArea        from './components/chat/ChatArea';
 import ChatInput       from './components/chat/ChatInput';
 import Dashboard       from './components/dashboard/Dashboard';
 import RoutineView     from './components/routine/RoutineView';
-import ScoreCompact    from './components/shared/ScoreCompact';
 import PontosAnimados  from './components/gamificacao/PontosAnimados';
 import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 

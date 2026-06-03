@@ -69,6 +69,14 @@ Varredura geral de backend e frontend antes de abrir ao mercado.
 
 - **AUDIT-05 (MÉDIO-ALTO) — RLS desativado no Supabase:** script pronto em `supabase/enable-rls.sql`. ✅ RODADO E VALIDADO pelo usuário em 2026-06-03. Confirmado que o frontend não faz `.from()` direto (só auth), então o app segue funcionando via backend (service_role).
 
+#### QUARTA LEVA — Revisão de componentes visuais
+
+- **AUDIT-12 (MÉDIO) — Lembrete de 30min ignorava recorrentes: RESOLVIDO.** `verificarNotificacoes` filtrava por `comp.data` (criação) → academia/trabalho/aulas nunca notificavam. Agora usa `getCompromissosDoDia`. `App.jsx`.
+- **AUDIT-13 (MÉDIO) — WeekView inconsistente com RoutineView: RESOLVIDO.** A visão "Semana" do Dashboard tinha os mesmos bugs já corrigidos no RoutineView (recorrentes concluídas sumiam; toggle sem data quebrava conclusão por ocorrência). Alinhado. `WeekView.jsx`.
+- **AUDIT-14 (BAIXO) — Código morto removido.** Deletados 5 arquivos nunca importados: `components/Onboarding.jsx` (duplicata), `InputArea.jsx`, `ScoreRing.jsx`, `HistoricoChat.jsx`, `gamificacao/Ranking.jsx`. Removido import morto de `ScoreCompact` no `App.jsx`.
+- **AUDIT-15 (BAIXO — A DECIDIR) — WeekView × RoutineView redundantes:** o Dashboard mostra "Semana" (WeekView, grade compacta) e a aba Rotina tem o RoutineView (timeline). Sobreposição de função. Bugs já alinhados nos dois; decisão de remover o WeekView do Dashboard adiada pelo usuário.
+- **VERIFICADOS OK:** ChatArea, ChatInput, ChatMessage, Login, Dashboard, ModalConfiguracoes, NextActionCard. `tomFlora` conectado ao prompt (flora.js:491). Toggles de notificação respeitados → BUG-022 efetivamente resolvido.
+
 #### TERCEIRA LEVA — RESOLVIDOS
 
 - **DURAÇÃO — Flora chutava duração: RESOLVIDO.** Os exemplos de schema mostravam `"duracao": 60` como default preenchido e a Flora copiava. Regra reforçada (60 é só placeholder), schema anotado, exceções ampliadas (duração já conhecida da memória). `flora.js`.
