@@ -17,7 +17,7 @@ import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 
 import ModalConfiguracoes from './components/ModalConfiguracoes';
 
-import { calcularScore, hojeYMD } from './utils/planoUtils';
+import { calcularScore, hojeYMD, getCompromissosDoDia } from './utils/planoUtils';
 import {
   processarEventoGamificacao,
   getNivel,
@@ -119,13 +119,16 @@ function verificarNotificacoes(planoAtual, memoriaAtual, configAtual) {
 
   // Lembrete 30min antes de compromissos de hoje — só se toggle ativado
   if (configAtual?.notificacoes?.lembretes !== false) {
-    (planoAtual?.compromissos || []).forEach(comp => {
+    // getCompromissosDoDia aplica recorrência + exceções. Antes o filtro por
+    // comp.data (data de criação) ignorava TODOS os recorrentes — academia,
+    // trabalho, aulas etc. nunca recebiam lembrete. Janela 25-35min garante que
+    // o tick de 5min sempre pegue o alvo de ~30min.
+    getCompromissosDoDia(planoAtual, hojeStr).forEach(comp => {
       if (!comp.hora || comp.concluida) return;
-      if (comp.data && comp.data !== hojeStr) return;
       const [h, m] = comp.hora.split(':').map(Number);
       const diff   = (h * 60 + m) - hora;
-      if (diff >= 28 && diff <= 32) {
-        const tag = `lembrete-30min-${comp.id}`;
+      if (diff >= 25 && diff <= 35) {
+        const tag = `lembrete-30min-${comp.id}-${hojeStr}`;
         if (!notificacoesEnviadas.has(tag)) {
           notificacoesEnviadas.add(tag);
           enviarNotificacao(`Em 30 minutos: ${comp.titulo}`, `Prepare-se para ${comp.titulo} às ${comp.hora}`, { tag });
