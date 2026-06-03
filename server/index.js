@@ -209,6 +209,23 @@ function sanitizarTarefas(tarefas) {
   });
 }
 
+// ── AUDIT-04: chave semântica de compromisso para dedup ──────────────────────
+// A Flora gera um id novo a cada criação; sem dedup semântico ela pode recriar
+// o mesmo compromisso lógico e duplicá-lo no calendário. A chave combina
+// título + hora + assinatura de recorrência (ou data, se pontual).
+function chaveCompromisso(c) {
+  const titulo = (c.titulo || '').toLowerCase().trim();
+  const hora = c.hora || '';
+  const rec = c.recorrencia;
+  let recSig;
+  if (!rec) recSig = 'pontual:' + (c.data || '');
+  else if (rec.tipo === 'semanal') recSig = 'semanal:' + [...(rec.diasSemana || [])].sort((a, b) => a - b).join(',');
+  else if (rec.tipo === 'diaria') recSig = 'diaria';
+  else if (rec.tipo === 'mensal') recSig = 'mensal:' + (rec.diaDoMes || '');
+  else recSig = 'outro';
+  return `${titulo}|${hora}|${recSig}`;
+}
+
 // ── BUG-ESTRUTURAL-2: Aplica diffs da Flora sobre o plano atual ───────────────
 function aplicarDiffs(planoAtual, alteracoes) {
   if (!alteracoes || alteracoes.length === 0) return planoAtual;
@@ -227,8 +244,16 @@ function aplicarDiffs(planoAtual, alteracoes) {
         };
         break;
       case 'add_compromisso':
-        if (alt.compromisso && !plano.compromissos.some(c => c.id === alt.compromisso.id)) {
-          plano.compromissos = [...plano.compromissos, alt.compromisso];
+        if (alt.compromisso) {
+          const novaChave = chaveCompromisso(alt.compromisso);
+          const jaExiste = plano.compromissos.some(c =>
+            c.id === alt.compromisso.id || chaveCompromisso(c) === novaChave
+          );
+          if (!jaExiste) {
+            plano.compromissos = [...plano.compromissos, alt.compromisso];
+          } else {
+            console.log('[DIFFS] add_compromisso ignorado (duplicata):', novaChave);
+          }
         }
         break;
       case 'update_compromisso': {
@@ -397,7 +422,8 @@ const corsOptions = {
       'http://localhost:5173',
       'http://localhost:3000',
       'https://fluxo-app-zeta.vercel.app',
-      /\.vercel\.app$/,
+      // Apenas previews DESTE projeto — não libera qualquer *.vercel.app de terceiros
+      /^https:\/\/fluxo-app-[a-z0-9-]+\.vercel\.app$/,
     ];
     if (!origin) return callback(null, true);
     const permitido = origensPermitidas.some(permitida => {

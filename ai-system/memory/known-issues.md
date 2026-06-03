@@ -57,14 +57,17 @@ Varredura geral de backend e frontend antes de abrir ao mercado.
 - **Impacto:** ruído de erro nos logs a cada primeiro acesso; mascarava erros reais.
 - **Solução:** trocado para `.maybeSingle()` (retorna data:null sem erro).
 
-#### REPORTADOS (não corrigidos — exigem decisão ou mudança maior)
+#### SEGUNDA LEVA — RESOLVIDOS
 
-- **AUDIT-04 (MÉDIO) — Duplicação de compromissos:** `aplicarDiffs` (op `add_compromisso`) deduplica só por `id`, mas a Flora gera `id` novo a cada criação (`comp-${Date.now()}`). Se ela recriar o mesmo compromisso lógico, surgem duplicatas no calendário. Recomendado: dedup semântico por `titulo`+`hora`+`diasSemana`/`data` (como já existe para tarefas em `preservarEstadosTarefas`).
-- **AUDIT-05 (MÉDIO) — RLS desativado no Supabase:** com `service_role` no backend e sem RLS, qualquer falha de autorização expõe dados de todos os usuários. Reativar antes de escalar.
-- **AUDIT-06 (MÉDIO) — CORS permissivo:** regex `/\.vercel\.app$/` libera qualquer subdomínio `*.vercel.app`. Restringir ao domínio de produção.
-- **AUDIT-07 (BAIXO) — Onboarding pode perder compromissos fixos:** `fluxo_compromissos_fixos_pendentes` é removido do localStorage ANTES do envio (dentro do setTimeout). Se o componente desmontar ou a rede falhar nos ~1,5s, os fixos se perdem sem retry.
-- **AUDIT-08 (BAIXO) — Check-in noturno pode ser cancelado pro dia:** a flag `marcarCheckinDisparadoHoje()` é setada antes do setTimeout de 1,2s; se `memoria` mudar nesse intervalo, o cleanup cancela o timer mas a flag impede novo disparo.
-- **AUDIT-09 (BAIXO) — `dataHoraAtual` sem timezone:** `enviarMensagem` monta a data com TZ do browser, enquanto o prompt usa `agoraBrasilia()` (BRT). Usuário fora do BR vê duas horas divergentes no prompt.
+- **AUDIT-04 (MÉDIO) — Duplicação de compromissos: RESOLVIDO.** Adicionado `chaveCompromisso()` em `index.js` (título+hora+assinatura de recorrência); `add_compromisso` em `aplicarDiffs` agora ignora duplicatas semânticas, não só por `id`.
+- **AUDIT-06 (MÉDIO) — CORS permissivo: RESOLVIDO.** Regex trocada de `/\.vercel\.app$/` para `/^https:\/\/fluxo-app-[a-z0-9-]+\.vercel\.app$/` (só previews deste projeto).
+- **AUDIT-07 (BAIXO) — Onboarding perder fixos: RESOLVIDO.** `removeItem` movido para dentro do setTimeout — se desmontar/recarregar antes dos 1,5s, a flag persiste e tenta de novo no próximo mount.
+- **AUDIT-08 (BAIXO) — Check-in cancelado pro dia: RESOLVIDO.** `marcarCheckinDisparadoHoje()` movido para dentro do callback do timer + re-check idempotente.
+- **AUDIT-09 (BAIXO) — `dataHoraAtual` sem TZ: RESOLVIDO.** Adicionado `timeZone: 'America/Sao_Paulo'`.
+
+#### AGUARDANDO AÇÃO DO USUÁRIO
+
+- **AUDIT-05 (MÉDIO-ALTO) — RLS desativado no Supabase:** script pronto em `supabase/enable-rls.sql`. Rodar no SQL Editor do Supabase. Não quebra o app (backend usa `service_role`, que bypassa RLS); protege contra acesso direto via anon key.
 
 ---
 

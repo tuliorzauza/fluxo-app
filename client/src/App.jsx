@@ -485,6 +485,7 @@ export default function App() {
       const dataHoraAtual = new Date().toLocaleString('pt-BR', {
         weekday: 'long', year: 'numeric', month: 'long',
         day: 'numeric', hour: '2-digit', minute: '2-digit',
+        timeZone: 'America/Sao_Paulo', // BRT — alinhado com agoraBrasilia() do backend
       });
 
       const res = await fetchComAuth(`${API_URL}/api/processar/stream`, {
@@ -642,8 +643,12 @@ export default function App() {
     if (jaFezHoje) return;
     if (jaDisparouCheckinHoje()) return;
 
-    marcarCheckinDisparadoHoje();
+    // AUDIT-08: marca a flag só ao DISPARAR (não antes do timer). Se memoria mudar
+    // e o cleanup cancelar o timer, o check-in não fica bloqueado pro dia inteiro.
+    // Re-checa dentro do callback para ser idempotente caso dois timers agendem.
     const t = setTimeout(() => {
+      if (jaDisparouCheckinHoje()) return;
+      marcarCheckinDisparadoHoje();
       enviarMensagemRef.current('[RITUAL_FECHAMENTO] Hora de fechar o dia. Como foi?');
     }, 1200);
     return () => clearTimeout(t);
@@ -685,8 +690,10 @@ export default function App() {
     const descricao = ls_get('fluxo_compromissos_fixos_pendentes');
     if (!descricao) return;
     compromissosPendentesRef.current = true;
-    localStorage.removeItem('fluxo_compromissos_fixos_pendentes');
     const t = setTimeout(() => {
+      // AUDIT-07: remove só ao disparar. Se desmontar/recarregar antes dos 1,5s,
+      // a flag persiste e os fixos são tentados de novo no próximo mount.
+      localStorage.removeItem('fluxo_compromissos_fixos_pendentes');
       enviarMensagemRef.current(
         `[Sistema] O usuário acabou de completar o onboarding e informou os seguintes compromissos fixos:\n"${descricao}"\n\nCrie esses compromissos recorrentes no plano agora, com categoria 'fixo', horários e dias corretos. Não faça perguntas — interprete e crie diretamente.`
       );
