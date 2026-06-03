@@ -17,6 +17,7 @@ import CelebracaoNivel from './components/gamificacao/CelebracaoNivel';
 import ModalConfiguracoes from './components/ModalConfiguracoes';
 import { track, identifyUser, resetAnalytics } from './lib/analytics';
 import OQueAprendi from './components/OQueAprendi';
+import Paywall from './components/Paywall';
 
 import { calcularScore, hojeYMD, getCompromissosDoDia } from './utils/planoUtils';
 import {
@@ -285,6 +286,8 @@ export default function App() {
   const [mostrarPerfil,   setMostrarPerfil]   = useState(false);
   const [mostrarConfig,   setMostrarConfig]   = useState(false);
   const [mostrarAprendi,  setMostrarAprendi]  = useState(false);
+  const [assinatura,      setAssinatura]      = useState(null);  // { plano, ilimitado, restantes, ... }
+  const [mostrarPaywall,  setMostrarPaywall]  = useState(false);
   const tooltipRef = useRef(null);
 
   // ── Configurações do usuário ────────────────────────────────────────────────
@@ -322,6 +325,7 @@ export default function App() {
         setPerfil(null);
         setOnboardingFeito(false);
         setConcluidasExternas({});
+        setAssinatura(null);
         return;
       }
 
@@ -333,6 +337,7 @@ export default function App() {
         identifyUser(session.user?.id); // associa eventos ao usuário (só UUID)
         if (event === 'SIGNED_IN') track('login');
         carregarDadosUsuarioRef.current?.();
+        carregarAssinaturaRef.current?.();
       }
     });
 
@@ -513,6 +518,15 @@ export default function App() {
           memoria: memoria || null,
         }),
       });
+
+      // Limite freemium atingido → abre paywall em vez de erro
+      if (res.status === 402) {
+        await res.json().catch(() => ({}));
+        setMensagens(novasMensagens); // remove o placeholder de streaming da Flora
+        setMostrarPaywall(true);
+        track('paywall_view', { origem: 'limite_mensagens' });
+        return;
+      }
 
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
@@ -1100,6 +1114,54 @@ export default function App() {
     setConcluidasExternas({});
   };
 
+  // ── Assinatura (plano + uso do dia) ──────────────────────────────────────
+  const carregarAssinatura = useCallback(async () => {
+    try {
+      const res = await fetchComAuth(`${API_URL}/api/usuario/assinatura`);
+      if (!res.ok) return;
+      setAssinatura(await res.json());
+    } catch (e) {
+      console.error('[ASSINATURA] erro ao carregar:', e.message);
+    }
+  }, []);
+  const carregarAssinaturaRef = useRef(null);
+  useEffect(() => { carregarAssinaturaRef.current = carregarAssinatura; }, [carregarAssinatura]);
+
+  const iniciarCheckout = useCallback(async (plano) => {
+    track('checkout_iniciado', { plano });
+    try {
+      const res = await fetchComAuth(`${API_URL}/api/stripe/checkout`, {
+        method: 'POST',
+        body: JSON.stringify({ plano }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url; // redireciona para o Stripe Checkout
+      } else {
+        alert(data.erro || 'Pagamentos ainda não estão disponíveis. Tenta mais tarde?');
+      }
+    } catch (e) {
+      console.error('[CHECKOUT] erro:', e);
+      alert('Erro ao iniciar o pagamento. Tenta de novo?');
+    }
+  }, []);
+
+  // Retorno do Stripe Checkout: ?assinatura=sucesso|cancelada
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const a = params.get('assinatura');
+    if (!a) return;
+    if (a === 'sucesso') {
+      track('checkout_sucesso');
+      setMostrarPaywall(false);
+      // O webhook pode demorar alguns segundos — tenta recarregar algumas vezes.
+      let n = 4;
+      const tick = () => { carregarAssinaturaRef.current?.(); if (--n > 0) setTimeout(tick, 2500); };
+      tick();
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   // ── Carregar dados do usuário do Supabase ────────────────────────────────
   const carregandoDadosRef = useRef(false);
   const carregarDadosUsuario = useCallback(async () => {
@@ -1551,6 +1613,8 @@ export default function App() {
           onLogout={handleLogout}
           onAbrirConfig={() => { setMostrarPerfil(false); setMostrarConfig(true); }}
           onAbrirAprendi={() => { setMostrarPerfil(false); setMostrarAprendi(true); track('aprendi_aberto'); }}
+          assinatura={assinatura}
+          onAbrirPaywall={() => { setMostrarPerfil(false); setMostrarPaywall(true); track('paywall_view', { origem: 'perfil' }); }}
         />
       )}
 
@@ -1560,6 +1624,17 @@ export default function App() {
           memoria={memoria}
           perfil={perfil}
           onFechar={() => setMostrarAprendi(false)}
+        />
+      )}
+
+      {/* ── Paywall (upgrade para Pro) ───────────────────────────────────── */}
+      {mostrarPaywall && (
+        <Paywall
+          restantes={assinatura?.restantes ?? 0}
+          limiteDia={assinatura?.limiteDia ?? 10}
+          atingiuLimite={(assinatura?.restantes ?? 0) <= 0}
+          onAssinar={iniciarCheckout}
+          onFechar={() => setMostrarPaywall(false)}
         />
       )}
 
@@ -1604,13 +1679,14 @@ export default function App() {
 }
 
 // ── Modal de perfil ──────────────────────────────────────────────────────────
-function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig, onAbrirAprendi }) {
+function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig, onAbrirAprendi, assinatura, onAbrirPaywall }) {
   const nome      = perfil?.nome || 'Você';
   const email     = sessao?.user?.email || '';
   const inicial   = nome.charAt(0).toUpperCase();
   const nivel     = gamificacao?.nivel || 1;
   const pontos    = gamificacao?.pontos || 0;
   const streak    = gamificacao?.streak || 0;
+  const ehPro     = assinatura?.plano === 'pro' || assinatura?.ilimitado;
 
   const NOMES_NIVEL = ['', 'Iniciante', 'Consistente', 'Focado', 'Produtivo', 'Mestre'];
 
@@ -1673,6 +1749,34 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
               <span className="text-[10px] text-zinc-600 mt-0.5">{label}</span>
             </div>
           ))}
+        </div>
+
+        {/* Plano / upgrade */}
+        <div className="px-4 pt-3">
+          {ehPro ? (
+            <div
+              className="flex items-center gap-2.5 px-4 py-3 rounded-xl"
+              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}
+            >
+              <span className="text-base leading-none">✨</span>
+              <span className="text-sm font-semibold text-amber-400">Fluxo Pro ativo</span>
+              <span className="ml-auto text-[10px] text-zinc-500">mensagens ilimitadas</span>
+            </div>
+          ) : (
+            <button
+              onClick={onAbrirPaywall}
+              className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl transition-all active:scale-[0.98]"
+              style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.16), rgba(217,119,6,0.1))', border: '1px solid rgba(245,158,11,0.3)' }}
+            >
+              <span className="text-base leading-none">✨</span>
+              <span className="text-sm font-semibold text-amber-400">Seja Pro</span>
+              <span className="ml-auto text-[11px] text-zinc-400">
+                {typeof assinatura?.restantes === 'number'
+                  ? `${assinatura.restantes} msg restantes hoje`
+                  : 'mensagens ilimitadas'}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Ações */}
