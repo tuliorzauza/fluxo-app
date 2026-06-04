@@ -1158,6 +1158,10 @@ Atualizar campos de uma tarefa existente (use o id original):
 Remover tarefa:
 { "op": "delete_tarefa", "id": "tarefa-existente" }
 
+Adicionar item ao "Quero Fazer" (banco de desejos para os momentos livres):
+{ "op": "add_quero_fazer", "item": { "titulo": "", "duracaoMin": 30, "periodo": "qualquer|manha|tarde|noite", "categoria": "aprendizado|lazer|corpo|criativo|social|descanso|outro" } }
+Remover item do Quero Fazer: { "op": "delete_quero_fazer", "id": "qf-existente" }
+
 Atualizar diagnóstico (sem tocar em compromissos/tarefas):
 { "op": "set_diagnostico", "diagnostico": { "principaisGargalos": [""], "tempoEstimadoPerdido": "", "scoreTempoLivre": 72 }, "proximaAcao": "", "sugestaoPratica": { "problema": "", "solucao": "", "tempoRecuperado": "" } }
 
@@ -1267,7 +1271,31 @@ está chegando (2 dias antes):
 → Pergunte: "Daqui 2 dias era pra você voltar com [atividade]. Como tá? Consegue retomar?"
   quickReplies: ["Sim, pode reativar", "Preciso de mais tempo", "Mudei de plano"]
 
-Se usuário anunciar retorno antecipado: remova as excecoes das datas futuras imediatamente.`;
+Se usuário anunciar retorno antecipado: remova as excecoes das datas futuras imediatamente.
+
+══════════════════════════════════
+QUERO FAZER — BANCO DE DESEJOS PARA MOMENTOS LIVRES
+══════════════════════════════════
+O usuário tem uma lista "Quero Fazer": coisas que ele deseja fazer quando sobrar
+um tempo (não são tarefas, não têm prazo, não são obrigação). Ex: "aprender violão",
+"ler ficção científica", "caminhar", "ver filme de repertório", "estudar IA".
+
+QUANDO ADICIONAR (op add_quero_fazer):
+- Quando o usuário mencionar algo que GOSTARIA de fazer, um desejo, um hobby, algo
+  que "queria voltar a fazer" — sem horário marcado.
+  Ex: "queria voltar a desenhar" → add_quero_fazer com titulo "Desenhar".
+- Infira os metadados (não pergunte um por um — seja natural):
+  · duracaoMin: minutos mínimos que valem a pena (caminhar ~20, curso ~45, filme ~90)
+  · periodo: "manha"/"tarde"/"noite" se fizer sentido (tomar sol = manha/tarde),
+    senão "qualquer"
+  · categoria: aprendizado|lazer|corpo|criativo|social|descanso|outro
+- Confirme de leve depois: "Anotei aí no seu Quero Fazer 🌱"
+
+NÃO confunda com tarefa: tarefa tem prazo e é obrigação; Quero Fazer é desejo livre.
+Na dúvida entre os dois, pergunte: "Isso é algo com prazo, ou pra quando sobrar um tempo?"
+
+A lista alimenta o card "Momentos livres" — então quanto melhor os metadados,
+melhores as sugestões no intervalo certo.`;
 }
 
 // ─── Parser da resposta da IA ─────────────────────────────────────────────────
@@ -1322,6 +1350,20 @@ function parseFloraResponse(rawText) {
               categoria: alt.tarefa.categoria || (alt.tarefa.prazo || alt.tarefa.blocoSugerido ? 'tarefa' : 'lembrete'),
               recorrencia: alt.tarefa.recorrencia || null,
               concluida: alt.tarefa.concluida || false,
+            },
+          };
+        }
+        if (alt.op === 'add_quero_fazer' && alt.item) {
+          return {
+            ...alt,
+            item: {
+              ...alt.item,
+              id: alt.item.id || `qf-${Date.now()}-${i}`,
+              duracaoMin: alt.item.duracaoMin ?? null,   // minutos mínimos úteis
+              periodo: alt.item.periodo || 'qualquer',   // qualquer|manha|tarde|noite
+              categoria: alt.item.categoria || 'outro',
+              feitoVezes: alt.item.feitoVezes || 0,
+              ultimaVez: alt.item.ultimaVez || null,
             },
           };
         }

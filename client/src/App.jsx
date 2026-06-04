@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, CalendarDays, Clock, UserCircle, Trash2, Waves, Zap, LogOut } from 'lucide-react';
+import { MessageSquare, CalendarDays, Clock, UserCircle, Trash2, Waves, Zap, LogOut, Sparkles } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -19,6 +19,7 @@ import { track, identifyUser, resetAnalytics } from './lib/analytics';
 import OQueAprendi from './components/OQueAprendi';
 import Paywall from './components/Paywall';
 import ResumoSemana from './components/ResumoSemana';
+import QueroFazer from './components/QueroFazer';
 
 import { calcularScore, hojeYMD, getCompromissosDoDia } from './utils/planoUtils';
 import {
@@ -969,6 +970,63 @@ export default function App() {
     salvarPlanoNoSupabase(novo);
   }, [plano, salvarPlanoNoSupabase]);
 
+  // ── Quero Fazer (banco de desejos pros momentos livres) ─────────────────
+  const adicionarQueroFazer = useCallback((item) => {
+    const base = plano || { compromissos: [], tarefas: [], queroFazer: [] };
+    const lista = base.queroFazer || [];
+    const tituloNorm = (item.titulo || '').toLowerCase().trim();
+    if (!tituloNorm || lista.some(q => (q.titulo || '').toLowerCase().trim() === tituloNorm)) return;
+    const novoItem = {
+      id: `qf-${Date.now()}`,
+      titulo: item.titulo.trim(),
+      duracaoMin: item.duracaoMin ?? null,
+      periodo: item.periodo || 'qualquer',
+      categoria: item.categoria || 'outro',
+      feitoVezes: 0,
+      ultimaVez: null,
+    };
+    const novo = { ...base, queroFazer: [...lista, novoItem] };
+    setPlano(novo);
+    ls_set(SK.plano, novo);
+    salvarPlanoNoSupabase(novo);
+    track('quero_fazer_add', { categoria: novoItem.categoria });
+  }, [plano, salvarPlanoNoSupabase]);
+
+  const removerQueroFazer = useCallback((id) => {
+    if (!plano) return;
+    const novo = { ...plano, queroFazer: (plano.queroFazer || []).filter(q => q.id !== id) };
+    setPlano(novo);
+    ls_set(SK.plano, novo);
+    salvarPlanoNoSupabase(novo);
+  }, [plano, salvarPlanoNoSupabase]);
+
+  const concluirQueroFazer = useCallback((id) => {
+    if (!plano) return;
+    const item = (plano.queroFazer || []).find(q => q.id === id);
+    if (!item) return;
+    const hoje = hojeYMD();
+    const novo = {
+      ...plano,
+      queroFazer: (plano.queroFazer || []).map(q =>
+        q.id === id ? { ...q, feitoVezes: (q.feitoVezes || 0) + 1, ultimaVez: hoje } : q
+      ),
+    };
+    setPlano(novo);
+    ls_set(SK.plano, novo);
+    salvarPlanoNoSupabase(novo);
+
+    // Gamificação: aproveitar um momento livre vale pontos (como tarefa flexível)
+    const memoriaBase = memoria || { gamificacao: { ...GAM_INICIAL } };
+    const { memoriaAtualizada, delta } = processarEventoGamificacao(memoriaBase, 'tarefa_flexivel', {
+      descricao: `Quero Fazer: ${item.titulo}`,
+    });
+    adicionarAnimacao(delta);
+    verificarLevelUp(memoria, memoriaAtualizada, perfil?.nome);
+    setMemoria(memoriaAtualizada);
+    ls_set(SK.memoria, memoriaAtualizada);
+    track('quero_fazer_feito', { categoria: item.categoria });
+  }, [plano, memoria, perfil, salvarPlanoNoSupabase, adicionarAnimacao, verificarLevelUp]);
+
   // ── Adicionar compromisso direto pelo calendário ────────────────────────
   const adicionarCompromisso = useCallback((compromisso) => {
     const planoBase = plano || { compromissos: [], tarefas: [] };
@@ -1466,14 +1524,15 @@ export default function App() {
         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
       >
         {[
-          { id: 'chat',   label: 'Chat',   icon: MessageSquare },
-          { id: 'plano',  label: 'Plano',  icon: CalendarDays  },
-          { id: 'rotina', label: 'Rotina', icon: Clock         },
+          { id: 'chat',       label: 'Chat',   icon: MessageSquare },
+          { id: 'plano',      label: 'Plano',  icon: CalendarDays  },
+          { id: 'rotina',     label: 'Rotina', icon: Clock         },
+          { id: 'querofazer', label: 'Quero',  icon: Sparkles      },
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setAba(id)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold font-titulo transition-all duration-150 rounded-t-lg relative"
+            className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold font-titulo transition-all duration-150 rounded-t-lg relative"
             style={{
               color: aba === id ? '#f59e0b' : '#52525b',
               background: aba === id ? 'rgba(245,158,11,0.06)' : 'transparent',
@@ -1568,6 +1627,8 @@ export default function App() {
               onEditarItem={editarItem}
               onDeletarItem={deletarItem}
               onAdicionarCompromisso={adicionarCompromisso}
+              onConcluirQueroFazer={concluirQueroFazer}
+              onIrQueroFazer={() => setAba('querofazer')}
               onVerPlano={() => setAba('chat')}
             />
           </div>
@@ -1593,6 +1654,18 @@ export default function App() {
                 <p className="text-zinc-600 text-xs mt-2">Conte pra Flora o que tem na sua semana →</p>
               </div>
             )}
+          </div>
+        )}
+
+        {aba === 'querofazer' && (
+          <div className="flex-1 overflow-y-auto">
+            <QueroFazer
+              queroFazer={plano?.queroFazer || []}
+              onAdicionar={adicionarQueroFazer}
+              onConcluir={concluirQueroFazer}
+              onRemover={removerQueroFazer}
+              onAbrirChat={() => setAba('chat')}
+            />
           </div>
         )}
 

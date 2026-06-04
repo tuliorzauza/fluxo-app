@@ -265,6 +265,7 @@ function aplicarDiffs(planoAtual, alteracoes) {
     ...planoAtual,
     compromissos: [...(planoAtual.compromissos || [])],
     tarefas: [...(planoAtual.tarefas || [])],
+    queroFazer: [...(planoAtual.queroFazer || [])],
   };
   for (const alt of alteracoes) {
     switch (alt.op) {
@@ -343,6 +344,29 @@ function aplicarDiffs(planoAtual, alteracoes) {
         break;
       case 'delete_tarefa':
         plano.tarefas = plano.tarefas.filter(t => t.id !== alt.id);
+        break;
+      case 'add_quero_fazer':
+        // Banco de intenções — dedup por título (case-insensitive) para a Flora
+        // não duplicar um desejo que o usuário já listou.
+        if (alt.item && alt.item.titulo) {
+          const tituloNorm = alt.item.titulo.toLowerCase().trim();
+          const jaExiste = plano.queroFazer.some(q =>
+            q.id === alt.item.id || (q.titulo || '').toLowerCase().trim() === tituloNorm
+          );
+          if (!jaExiste) {
+            plano.queroFazer = [...plano.queroFazer, alt.item];
+          } else {
+            console.log('[DIFFS] add_quero_fazer ignorado (duplicata):', tituloNorm);
+          }
+        }
+        break;
+      case 'update_quero_fazer':
+        plano.queroFazer = plano.queroFazer.map(q =>
+          q.id === alt.id ? { ...q, ...alt.campos } : q
+        );
+        break;
+      case 'delete_quero_fazer':
+        plano.queroFazer = plano.queroFazer.filter(q => q.id !== alt.id);
         break;
       case 'set_diagnostico':
         plano = {

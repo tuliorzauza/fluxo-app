@@ -23,6 +23,7 @@ async function carregarDadosUsuario(userId) {
     plano: plano.data ? {
       compromissos:  plano.data.compromissos  || [],
       tarefas:       plano.data.tarefas       || [],
+      queroFazer:    plano.data.quero_fazer   || [],
       diagnostico:   plano.data.diagnostico   || {},
       proximaAcao:   plano.data.proxima_acao  || null,
       sugestaoPratica: plano.data.sugestao_pratica || null,
@@ -38,16 +39,25 @@ async function carregarDadosUsuario(userId) {
 async function salvarPlano(userId, plano) {
   console.log('[SAVE PLANO] userId:', userId);
   console.log('[SAVE PLANO] plano keys:', Object.keys(plano || {}));
-  const { data, error } = await supabase.from('planos').upsert({
+  const payload = {
     user_id:          userId,
     compromissos:     plano.compromissos    || [],
     tarefas:          plano.tarefas         || [],
+    quero_fazer:      plano.queroFazer      || [],
     diagnostico:      plano.diagnostico     || {},
     proxima_acao:     plano.proximaAcao     || null,
     sugestao_pratica: plano.sugestaoPratica || null,
     reorganizacoes:   plano.reorganizacoes  || null,
-  }, { onConflict: 'user_id' });
-  console.log('[SAVE PLANO] data:', data);
+  };
+  let { data, error } = await supabase.from('planos').upsert(payload, { onConflict: 'user_id' });
+
+  // Resiliência: se a migração quero_fazer ainda não rodou, a coluna não existe.
+  // Salva sem ela (não quebra o caminho crítico) e avisa. Roda quero-fazer-setup.sql.
+  if (error && /quero_fazer/i.test(error.message || '') ) {
+    console.warn('[SAVE PLANO] coluna quero_fazer ausente — salvando sem ela. Rode supabase/quero-fazer-setup.sql');
+    const { quero_fazer, ...semQF } = payload;
+    ({ data, error } = await supabase.from('planos').upsert(semQF, { onConflict: 'user_id' }));
+  }
   console.log('[SAVE PLANO] error:', JSON.stringify(error));
   if (error) throw error;
 }

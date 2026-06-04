@@ -1,11 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, ChevronRight } from 'lucide-react';
+import { Clock, ChevronRight, Plus } from 'lucide-react';
+import { CATEGORIAS_QF } from '../QueroFazer';
 
 // Converte "HH:MM" em minutos desde meia-noite
 function hhmm(str) {
   if (!str) return null;
   const [h, m] = str.split(':').map(Number);
   return h * 60 + m;
+}
+
+// Bucket de período a partir de minutos desde meia-noite (BRT)
+function periodoDe(minutos) {
+  const h = Math.floor(minutos / 60);
+  if (h >= 5 && h < 12) return 'manha';
+  if (h >= 12 && h < 18) return 'tarde';
+  return 'noite'; // 18h–24h e madrugada
+}
+
+// Cruza a lista "Quero Fazer" com um gap: cabe na duração E no período.
+// Prioriza o que foi feito há mais tempo (rotaciona as sugestões).
+function sugestoesPara(queroFazer, inicioEfetivoMin, duracaoRestante) {
+  const periodo = periodoDe(inicioEfetivoMin);
+  return (queroFazer || [])
+    .filter(q => q?.titulo)
+    .filter(q => !q.duracaoMin || q.duracaoMin <= duracaoRestante)
+    .filter(q => !q.periodo || q.periodo === 'qualquer' || q.periodo === periodo)
+    .sort((a, b) => (a.ultimaVez || '0').localeCompare(b.ultimaVez || '0'))
+    .slice(0, 3);
 }
 
 function fmt(min) {
@@ -66,7 +87,7 @@ function labelDuracao(min, tipo) {
   return tipo === 'bloco_longo' ? `🕐 ${durStr} livres` : `⚡ ~${durStr} livres`;
 }
 
-export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDoDia = [] }) {
+export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDoDia = [], queroFazer = [], onConcluirQueroFazer, onIrQueroFazer }) {
   const [agora, setAgora] = useState(new Date());
 
   useEffect(() => {
@@ -142,17 +163,54 @@ export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDo
                   <p className="text-[11px] text-zinc-400 leading-snug">
                     {l.antes ? `Antes de ${l.antes}` : 'Final do dia'}
                   </p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5 italic">
-                    {l.duracao <= 20 ? 'Respira, hidrata, estica.' :
-                     l.duracao <= 45 ? 'Leitura leve, emails ou descanso.' :
-                     l.duracao <= 120 ? 'Estudo focado ou tarefa pendente.' :
-                     'Bloco grande — bom pra projeto, descanso ou o que quiser.'}
-                  </p>
+                  {(() => {
+                    // Sugestões do "Quero Fazer" que cabem nesse intervalo (duração + período)
+                    const inicioEfetivo = Math.max(l.inicio, horaAtual);
+                    const restante = l.fim - inicioEfetivo;
+                    const sugs = sugestoesPara(queroFazer, inicioEfetivo, restante);
+                    if (sugs.length > 0) {
+                      return (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {sugs.map(s => (
+                            <button
+                              key={s.id}
+                              onClick={() => onConcluirQueroFazer?.(s.id)}
+                              title="Marcar que você fez isso"
+                              className="px-2 py-1 rounded-full text-[10px] text-amber-300 transition-all active:scale-95"
+                              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)' }}
+                            >
+                              {(CATEGORIAS_QF[s.categoria]?.emoji) || '✨'} {s.titulo}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    }
+                    // Sem item compatível → dica genérica de antes
+                    return (
+                      <p className="text-[10px] text-zinc-600 mt-0.5 italic">
+                        {l.duracao <= 20 ? 'Respira, hidrata, estica.' :
+                         l.duracao <= 45 ? 'Leitura leve, emails ou descanso.' :
+                         l.duracao <= 120 ? 'Estudo focado ou tarefa pendente.' :
+                         'Bloco grande — bom pra projeto, descanso ou o que quiser.'}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* CTA pra semear o "Quero Fazer" quando a lista está vazia */}
+      {lacunas.length > 0 && (queroFazer || []).length === 0 && onIrQueroFazer && (
+        <button
+          onClick={onIrQueroFazer}
+          className="w-full mt-3 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold transition-all active:scale-95"
+          style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)', color: '#f59e0b' }}
+        >
+          <Plus size={12} /> Diga o que quer fazer nesses momentos
+        </button>
       )}
     </div>
   );

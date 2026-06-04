@@ -36,6 +36,32 @@ Criar memória técnica contínua para:
 
 ---
 
+### [2026-06-03] FEATURE — "Quero Fazer" (banco de desejos pros momentos livres)
+
+Nova aba (4ª) onde o usuário lista coisas que quer fazer quando sobrar tempo. O
+card "Momentos livres" cruza a lista com os gaps da agenda (duração + período) e
+sugere o que cabe — antídoto ao doom-scroll, sem culpa. A Flora também popula a
+lista a partir das conversas.
+
+**Decisões:**
+- Aba (não só dentro do chat) — a lista vazia + "+" é o estímulo de cadastro.
+- Construída ANTES do redesign de propósito (trava a estrutura de 4 abas; o
+  redesign cobre tudo numa passada só). Discordamos do conselho "só após redesign".
+- Dados em `plano.queroFazer` (reusa load autoritativo + diffs + sync; race-safe).
+
+**Arquitetura:**
+- `supabase/quero-fazer-setup.sql`: adiciona coluna `quero_fazer jsonb`.
+- `salvarPlano` é DEFENSIVO: se a coluna não existir (migração não rodada), salva
+  sem ela e avisa — deploy seguro independente da ordem. **Rodar o SQL pra persistir.**
+- Diffs da Flora: `add_quero_fazer` (dedup por título), `update/delete_quero_fazer`.
+- `MicrointervalosCard`: `sugestoesPara()` filtra por duração ≤ gap e período;
+  chip clicável = marcar feito (+pontos, atualiza `ultimaVez` → rotaciona sugestões).
+- Cada item: `{ id, titulo, duracaoMin, periodo, categoria, feitoVezes, ultimaVez }`.
+
+**Pendente do usuário:** rodar `supabase/quero-fazer-setup.sql`.
+
+---
+
 ### [2026-06-03] FEATURES DO ROADMAP — medir → provar valor → cobrar
 
 Implementadas na ordem que faz sentido para um app de IA pré-mercado.

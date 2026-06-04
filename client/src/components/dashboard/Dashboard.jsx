@@ -22,6 +22,8 @@ export default function Dashboard({
   onEditarItem,
   onDeletarItem,
   onAdicionarCompromisso,
+  onConcluirQueroFazer,
+  onIrQueroFazer,
   onVerPlano,
 }) {
   const [mostrarSemana, setMostrarSemana] = useState(true);
@@ -95,7 +97,14 @@ export default function Dashboard({
 
       {/* ── Momentos livres hoje ────────────────────────────────────────── */}
       {planoComScore && (
-        <MicrointervalosCard plano={planoComScore} onAbrirChat={onVerPlano} compromissosDoDia={compromissosDoDia} />
+        <MicrointervalosCard
+          plano={planoComScore}
+          onAbrirChat={onVerPlano}
+          compromissosDoDia={compromissosDoDia}
+          queroFazer={planoComScore.queroFazer || []}
+          onConcluirQueroFazer={onConcluirQueroFazer}
+          onIrQueroFazer={onIrQueroFazer}
+        />
       )}
 
       {/* ── Visão semanal colapsável ────────────────────────────────────── */}
