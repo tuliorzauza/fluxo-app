@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, ChevronRight, Plus } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Clock, ChevronRight, Plus, Check } from 'lucide-react';
 import { CATEGORIAS_QF } from '../QueroFazer';
 import { hojeYMD } from '../../utils/planoUtils';
 
@@ -24,11 +24,12 @@ function sugestoesPara(queroFazer, inicioEfetivoMin, duracaoRestante, hojeStr) {
   const periodo = periodoDe(inicioEfetivoMin);
   return (queroFazer || [])
     .filter(q => q?.titulo)
-    .filter(q => !(Array.isArray(q.feitoEm) && q.feitoEm.includes(hojeStr))) // já feito hoje → some
     .filter(q => !q.duracaoMin || q.duracaoMin <= duracaoRestante)
     .filter(q => !q.periodo || q.periodo === 'qualquer' || q.periodo === periodo)
     .sort((a, b) => (a.ultimaVez || '0').localeCompare(b.ultimaVez || '0'))
     .slice(0, 3);
+  // Nota: não filtra por "já feito hoje" — o chip mostra check mas ainda permite
+  // registrar mais vezes (comportamento solicitado para atividades repetíveis).
 }
 
 function fmt(min) {
@@ -91,6 +92,18 @@ function labelDuracao(min, tipo) {
 
 export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDoDia = [], queroFazer = [], onConcluirQueroFazer, onIrQueroFazer }) {
   const [agora, setAgora] = useState(new Date());
+  // ids marcados nesta sessão — feedback visual imediato de "feito" no card
+  const [marcadosHoje, setMarcadosHoje] = useState(() => {
+    const hoje = hojeYMD();
+    return new Set(
+      (queroFazer || [])
+        .filter(q => {
+          const fe = q.feitoEm || {};
+          return !Array.isArray(fe) && (fe[hoje] || 0) > 0;
+        })
+        .map(q => q.id)
+    );
+  });
 
   useEffect(() => {
     const intervalo = setInterval(() => setAgora(new Date()), 5 * 60 * 1000);
@@ -173,17 +186,30 @@ export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDo
                     if (sugs.length > 0) {
                       return (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {sugs.map(s => (
-                            <button
-                              key={s.id}
-                              onClick={() => onConcluirQueroFazer?.(s.id)}
-                              title="Marcar que você fez isso"
-                              className="px-2 py-1 rounded-full text-[10px] text-amber-300 transition-all active:scale-95"
-                              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)' }}
-                            >
-                              {(CATEGORIAS_QF[s.categoria]?.emoji) || '✨'} {s.titulo}
-                            </button>
-                          ))}
+                          {sugs.map(s => {
+                            const jaMarcado = marcadosHoje.has(s.id);
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => {
+                                  onConcluirQueroFazer?.(s.id, +1);
+                                  setMarcadosHoje(prev => new Set([...prev, s.id]));
+                                }}
+                                title={jaMarcado ? 'Feito! Toque pra registrar mais uma vez' : 'Marcar como feito'}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-medium transition-all active:scale-95"
+                                style={jaMarcado
+                                  ? { background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.4)', color: '#4ade80' }
+                                  : { background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.22)', color: '#fcd34d' }
+                                }
+                              >
+                                {jaMarcado
+                                  ? <Check size={10} strokeWidth={2.5} />
+                                  : <span>{(CATEGORIAS_QF[s.categoria]?.emoji) || '✨'}</span>
+                                }
+                                {s.titulo}
+                              </button>
+                            );
+                          })}
                         </div>
                       );
                     }

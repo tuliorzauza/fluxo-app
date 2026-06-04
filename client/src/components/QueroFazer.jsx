@@ -8,7 +8,7 @@
  * Sem culpa, sem cobrança: é uma coleção de possibilidades, não uma to-do list.
  */
 import React, { useState, useMemo } from 'react';
-import { Plus, Check, Trash2, Sparkles, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, Sparkles, MessageSquare, Minus } from 'lucide-react';
 import { hojeYMD } from '../utils/planoUtils';
 import { calcSemana, toYMD } from '../utils/calendarUtils';
 
@@ -138,10 +138,12 @@ function ItemQF({ item, feitoSemana, feitoHoje, onConcluir, onRemover }) {
   const cat = CATEGORIAS_QF[item.categoria] || CATEGORIAS_QF.outro;
   const dur = fmtDur(item.duracaoMin);
   const periodo = item.periodo && item.periodo !== 'qualquer' ? PERIODOS_QF[item.periodo] : null;
+  const podeDecrementar = feitoHoje > 0;
 
   return (
     <div className="card !py-3 flex items-center gap-3 group">
       <span className="text-xl flex-shrink-0">{cat.emoji}</span>
+
       <div className="flex-1 min-w-0">
         <p className="text-sm text-white font-medium leading-tight truncate">{item.titulo}</p>
         <div className="flex items-center gap-2 mt-0.5">
@@ -152,19 +154,38 @@ function ItemQF({ item, feitoSemana, feitoHoje, onConcluir, onRemover }) {
           )}
         </div>
       </div>
-      {/* Toggle "feito hoje": idempotente por dia. Verde sólido = feito; toque desfaz. */}
-      <button
-        onClick={() => onConcluir(item.id)}
-        title={feitoHoje ? 'Feito hoje — toque para desfazer' : 'Marcar que fiz hoje'}
-        className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90"
-        style={feitoHoje
-          ? { background: 'rgba(34,197,94,0.9)', border: '1px solid rgba(34,197,94,1)' }
-          : { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' }}>
-        <Check size={14} className={feitoHoje ? 'text-black' : 'text-emerald-400'} strokeWidth={feitoHoje ? 3 : 2} />
-      </button>
-      <button onClick={() => onRemover(item.id)} title="Remover"
-        className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-zinc-700 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100">
-        <Trash2 size={13} />
+
+      {/* Contador diário: − N + */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          onClick={() => onConcluir(item.id, -1)}
+          disabled={!podeDecrementar}
+          title="Tirar um"
+          className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90 disabled:opacity-25"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <Minus size={11} className="text-zinc-400" />
+        </button>
+
+        <span
+          className="w-6 text-center font-titulo font-bold text-sm leading-none"
+          style={{ color: feitoHoje > 0 ? '#4ade80' : '#52525b' }}>
+          {feitoHoje}
+        </span>
+
+        <button
+          onClick={() => onConcluir(item.id, +1)}
+          title="Marcar mais uma vez"
+          className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90"
+          style={feitoHoje > 0
+            ? { background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.35)' }
+            : { background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+          <Plus size={11} className="text-emerald-400" />
+        </button>
+      </div>
+
+      <button onClick={() => onRemover(item.id)} title="Remover da lista"
+        className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-zinc-700 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100">
+        <Trash2 size={12} />
       </button>
     </div>
   );
@@ -210,14 +231,23 @@ export default function QueroFazer({ queroFazer = [], onAdicionar, onConcluir, o
       {lista.length > 0 ? (
         <div className="space-y-2">
           {lista.map((item) => {
-            const feitoEm = Array.isArray(item.feitoEm) ? item.feitoEm : [];
-            const feitoSemana = feitoEm.filter(d => setSemana.has(d)).length;
+            // Suporta dois formatos: array legado [...datas] e objeto { data: count }
+            let feitoEm = item.feitoEm || {};
+            if (Array.isArray(feitoEm)) {
+              const counts = {};
+              feitoEm.forEach(d => { counts[d] = (counts[d] || 0) + 1; });
+              feitoEm = counts;
+            }
+            const feitoHoje = feitoEm[hoje] || 0;
+            const feitoSemana = Object.entries(feitoEm)
+              .filter(([d]) => setSemana.has(d))
+              .reduce((s, [, v]) => s + v, 0);
             return (
               <ItemQF
                 key={item.id}
                 item={item}
                 feitoSemana={feitoSemana}
-                feitoHoje={feitoEm.includes(hoje)}
+                feitoHoje={feitoHoje}
                 onConcluir={onConcluir}
                 onRemover={onRemover}
               />

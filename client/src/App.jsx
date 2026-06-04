@@ -1000,35 +1000,48 @@ export default function App() {
     salvarPlanoNoSupabase(novo);
   }, [plano, salvarPlanoNoSupabase]);
 
-  // Marca/desmarca "feito HOJE" — idempotente por dia (resolve cliques repetidos)
-  // e permite desfazer um clique sem querer. Pontos só na transição p/ feito.
-  const toggleQueroFazerHoje = useCallback((id) => {
+  // Ajusta contador diário de uma atividade (+1 ou -1). Não deixa passar de 0.
+  // feitoEm é objeto { "YYYY-MM-DD": count } — migra array legado automaticamente.
+  const ajustarQueroFazer = useCallback((id, delta) => {
     if (!plano) return;
     const item = (plano.queroFazer || []).find(q => q.id === id);
     if (!item) return;
     const hoje = hojeYMD();
-    const feitoEm = Array.isArray(item.feitoEm) ? item.feitoEm : [];
-    const jaFeitoHoje = feitoEm.includes(hoje);
-    const novoFeitoEm = jaFeitoHoje ? feitoEm.filter(d => d !== hoje) : [...feitoEm, hoje];
-    const ultimaVez = novoFeitoEm.length ? [...novoFeitoEm].sort().slice(-1)[0] : null;
 
-    const novo = {
+    // Migração defensiva: aceita array legado { [...datas] } → conta distintas por data
+    let feitoEm = item.feitoEm || {};
+    if (Array.isArray(feitoEm)) {
+      const counts = {};
+      feitoEm.forEach(d => { counts[d] = (counts[d] || 0) + 1; });
+      feitoEm = counts;
+    }
+
+    const atual = feitoEm[hoje] || 0;
+    const novo_count = Math.max(0, atual + delta);
+    const novoFeitoEm = { ...feitoEm };
+    if (novo_count === 0) delete novoFeitoEm[hoje];
+    else novoFeitoEm[hoje] = novo_count;
+
+    const datas = Object.keys(novoFeitoEm);
+    const ultimaVez = datas.length ? [...datas].sort().slice(-1)[0] : null;
+
+    const novoPlano = {
       ...plano,
       queroFazer: (plano.queroFazer || []).map(q =>
         q.id === id ? { ...q, feitoEm: novoFeitoEm, ultimaVez } : q
       ),
     };
-    setPlano(novo);
-    ls_set(SK.plano, novo);
-    salvarPlanoNoSupabase(novo);
+    setPlano(novoPlano);
+    ls_set(SK.plano, novoPlano);
+    salvarPlanoNoSupabase(novoPlano);
 
-    // Só pontua ao MARCAR (não ao desfazer)
-    if (!jaFeitoHoje) {
+    // Só pontua ao incrementar (não ao decrementar)
+    if (delta > 0) {
       const memoriaBase = memoria || { gamificacao: { ...GAM_INICIAL } };
-      const { memoriaAtualizada, delta } = processarEventoGamificacao(memoriaBase, 'tarefa_flexivel', {
+      const { memoriaAtualizada, delta: pts } = processarEventoGamificacao(memoriaBase, 'tarefa_flexivel', {
         descricao: `Tempo Livre: ${item.titulo}`,
       });
-      adicionarAnimacao(delta);
+      adicionarAnimacao(pts);
       verificarLevelUp(memoria, memoriaAtualizada, perfil?.nome);
       setMemoria(memoriaAtualizada);
       ls_set(SK.memoria, memoriaAtualizada);
@@ -1636,7 +1649,7 @@ export default function App() {
               onEditarItem={editarItem}
               onDeletarItem={deletarItem}
               onAdicionarCompromisso={adicionarCompromisso}
-              onConcluirQueroFazer={toggleQueroFazerHoje}
+              onConcluirQueroFazer={ajustarQueroFazer}
               onIrQueroFazer={() => setAba('querofazer')}
               onVerPlano={() => setAba('chat')}
             />
@@ -1671,7 +1684,7 @@ export default function App() {
             <QueroFazer
               queroFazer={plano?.queroFazer || []}
               onAdicionar={adicionarQueroFazer}
-              onConcluir={toggleQueroFazerHoje}
+              onConcluir={ajustarQueroFazer}
               onRemover={removerQueroFazer}
               onAbrirChat={() => setAba('chat')}
             />
