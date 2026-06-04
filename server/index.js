@@ -1038,6 +1038,73 @@ Retorne JSON no formato padrão.`;
   }
 });
 
+// ── Resumo da Semana — síntese retrospectiva via Claude ───────────────────────
+// Recebe métricas já calculadas no frontend + check-ins + compromissos da semana.
+// Retorna um resumo caloroso, sem cobrança, no tom da Flora.
+app.post('/api/resumo-semana', autenticarUsuario, async (req, res) => {
+  const {
+    numeros = {}, checkIns = [], compromissos = [], nomeUsuario = '', tomFlora = 'calorosa',
+  } = req.body;
+
+  const blocoTom = tomFlora === 'direta'
+    ? 'Tom: objetiva e direta, sem rodeios.'
+    : 'Tom: calorosa e próxima, com leveza.';
+
+  const systemPrompt = `Você é a Flora, a amiga organizada do usuário, escrevendo um resumo
+retrospectivo da semana dele. ${blocoTom}
+
+Retorne SOMENTE este JSON, sem texto antes ou depois:
+{
+  "titulo": "título curto e humano (2-4 palavras)",
+  "resumo": "2-3 frases olhando pra semana que passou, sem julgamento nem cobrança",
+  "destaque": "uma coisa boa concreta da semana (ou null se não houver dados)",
+  "sugestao": "uma sugestão gentil e específica pra próxima semana (ou null)"
+}
+
+REGRAS:
+- Nunca culpe, nunca seja motivacional vazio, nunca use clichê de produtividade.
+- Se a semana foi fraca, acolha sem drama e foque no próximo passo pequeno.
+- Fale com o usuário por "você". Português brasileiro.`;
+
+  const userContent = `Semana de ${nomeUsuario || 'do usuário'}:
+- Tarefas concluídas: ${numeros.concluidas ?? 0} de ${numeros.total ?? 0}
+- Dias ativos no app: ${numeros.diasAtivos ?? 0}
+- Sequência (streak): ${numeros.streak ?? 0} dias
+- Check-ins da semana: ${JSON.stringify((checkIns || []).slice(-7))}
+- Compromissos da semana: ${JSON.stringify((compromissos || []).slice(0, 20))}`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }],
+    });
+    const resultado = extrairJsonSeguro(response.content[0]?.text || '');
+    res.json({
+      titulo:   resultado.titulo   || 'Sua semana',
+      resumo:   resultado.resumo   || '',
+      destaque: resultado.destaque || null,
+      sugestao: resultado.sugestao || null,
+      numeros,
+    });
+  } catch (error) {
+    console.error('Erro no resumo-semana:', error.message);
+    // Fallback determinístico sem Claude
+    const c = numeros.concluidas ?? 0;
+    const t = numeros.total ?? 0;
+    res.json({
+      titulo: 'Sua semana',
+      resumo: t > 0
+        ? `Você concluiu ${c} de ${t} itens essa semana. Cada um conta — o importante é seguir no seu ritmo.`
+        : 'Semana mais tranquila por aqui. Bom momento pra planejar a próxima com calma.',
+      destaque: numeros.streak > 0 ? `${numeros.streak} dias de sequência mantidos.` : null,
+      sugestao: 'Escolha uma coisa pequena pra destravar logo na segunda.',
+      numeros,
+    });
+  }
+});
+
 // ── Assinatura: status + uso do dia ───────────────────────────────────────────
 app.get('/api/usuario/assinatura', autenticarUsuario, async (req, res) => {
   try {

@@ -18,6 +18,7 @@ import ModalConfiguracoes from './components/ModalConfiguracoes';
 import { track, identifyUser, resetAnalytics } from './lib/analytics';
 import OQueAprendi from './components/OQueAprendi';
 import Paywall from './components/Paywall';
+import ResumoSemana from './components/ResumoSemana';
 
 import { calcularScore, hojeYMD, getCompromissosDoDia } from './utils/planoUtils';
 import {
@@ -286,6 +287,7 @@ export default function App() {
   const [mostrarPerfil,   setMostrarPerfil]   = useState(false);
   const [mostrarConfig,   setMostrarConfig]   = useState(false);
   const [mostrarAprendi,  setMostrarAprendi]  = useState(false);
+  const [mostrarResumo,   setMostrarResumo]   = useState(false);
   const [assinatura,      setAssinatura]      = useState(null);  // { plano, ilimitado, restantes, ... }
   const [mostrarPaywall,  setMostrarPaywall]  = useState(false);
   const tooltipRef = useRef(null);
@@ -1613,6 +1615,7 @@ export default function App() {
           onLogout={handleLogout}
           onAbrirConfig={() => { setMostrarPerfil(false); setMostrarConfig(true); }}
           onAbrirAprendi={() => { setMostrarPerfil(false); setMostrarAprendi(true); track('aprendi_aberto'); }}
+          onAbrirResumo={() => { setMostrarPerfil(false); setMostrarResumo(true); track('resumo_semana_aberto'); }}
           assinatura={assinatura}
           onAbrirPaywall={() => { setMostrarPerfil(false); setMostrarPaywall(true); track('paywall_view', { origem: 'perfil' }); }}
         />
@@ -1624,6 +1627,17 @@ export default function App() {
           memoria={memoria}
           perfil={perfil}
           onFechar={() => setMostrarAprendi(false)}
+        />
+      )}
+
+      {/* ── Modal "Resumo da semana" ─────────────────────────────────────── */}
+      {mostrarResumo && (
+        <ResumoSemana
+          plano={plano}
+          memoria={memoria}
+          perfil={perfil}
+          tomFlora={config?.tomFlora || 'calorosa'}
+          onFechar={() => setMostrarResumo(false)}
         />
       )}
 
@@ -1679,7 +1693,7 @@ export default function App() {
 }
 
 // ── Modal de perfil ──────────────────────────────────────────────────────────
-function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig, onAbrirAprendi, assinatura, onAbrirPaywall }) {
+function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogout, onAbrirConfig, onAbrirAprendi, onAbrirResumo, assinatura, onAbrirPaywall }) {
   const nome      = perfil?.nome || 'Você';
   const email     = sessao?.user?.email || '';
   const inicial   = nome.charAt(0).toUpperCase();
@@ -1790,6 +1804,14 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
             <span className="ml-auto text-[10px] text-amber-500/70">novo</span>
           </button>
           <button
+            onClick={onAbrirResumo}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
+          >
+            <span className="text-base leading-none">📊</span>
+            Resumo da semana
+            <span className="ml-auto text-[10px] text-amber-500/70">novo</span>
+          </button>
+          <button
             onClick={onAbrirConfig}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-zinc-300 transition-colors hover:bg-white/5 text-left"
           >
@@ -1813,23 +1835,7 @@ function ModalPerfil({ perfil, sessao, gamificacao, onFechar, onResetar, onLogou
           </button>
         </div>
 
-        {/* Em breve */}
-        <div
-          className="mx-4 mb-4 rounded-xl overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
-        >
-          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-4 pt-3 pb-2">Em breve</p>
-          {[
-            { icon: '📊', label: 'Resumo da semana' },
-          ].map(({ icon, label }) => (
-            <div key={label} className="flex items-center gap-3 px-4 py-2.5 opacity-40">
-              <span className="text-sm">{icon}</span>
-              <span className="text-xs text-zinc-500">{label}</span>
-              <span className="ml-auto text-[10px] text-zinc-700">em breve</span>
-            </div>
-          ))}
-          <div className="h-2" />
-        </div>
+        <div className="h-2" />
       </div>
     </div>
   );
