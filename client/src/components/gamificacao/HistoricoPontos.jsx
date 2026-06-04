@@ -12,14 +12,19 @@ const FILTROS = [
   { id: 'mes',    label: 'Este mês'   },
 ];
 
-function hoje()   { return new Date().toISOString().split('T')[0]; }
+// Datas em BRT — o histórico grava data em BRT (alinhado ao backend).
+// Usar toISOString() (UTC) quebrava os filtros/rótulos após 21h BRT.
+function ymdBRT(d = new Date()) {
+  return d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+}
+function hoje() { return ymdBRT(); }
 function semanaAtras() {
   const d = new Date(); d.setDate(d.getDate() - 7);
-  return d.toISOString().split('T')[0];
+  return ymdBRT(d);
 }
 function mesAtras() {
   const d = new Date(); d.setDate(d.getDate() - 30);
-  return d.toISOString().split('T')[0];
+  return ymdBRT(d);
 }
 
 export default function HistoricoPontos({ historico = [], pontosTotal = 0, onFechar }) {
@@ -37,9 +42,9 @@ export default function HistoricoPontos({ historico = [], pontosTotal = 0, onFec
   function formatarData(iso) {
     if (!iso) return '';
     const d = new Date(iso + 'T12:00:00');
-    const hj = new Date().toISOString().split('T')[0];
+    const hj = ymdBRT();
     const on = new Date(); on.setDate(on.getDate() - 1);
-    const onStr = on.toISOString().split('T')[0];
+    const onStr = ymdBRT(on);
     if (iso === hj)    return 'Hoje';
     if (iso === onStr) return 'Ontem';
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
