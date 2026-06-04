@@ -7,8 +7,10 @@
  *
  * Sem culpa, sem cobrança: é uma coleção de possibilidades, não uma to-do list.
  */
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, Check, Trash2, Sparkles, MessageSquare } from 'lucide-react';
+import { hojeYMD } from '../utils/planoUtils';
+import { calcSemana, toYMD } from '../utils/calendarUtils';
 
 export const CATEGORIAS_QF = {
   aprendizado: { label: 'Aprender', emoji: '📚' },
@@ -132,7 +134,7 @@ function FormAdicionar({ onAdicionar, onCancelar }) {
 }
 
 // ── Item da lista ─────────────────────────────────────────────────────────────
-function ItemQF({ item, onConcluir, onRemover }) {
+function ItemQF({ item, feitoSemana, feitoHoje, onConcluir, onRemover }) {
   const cat = CATEGORIAS_QF[item.categoria] || CATEGORIAS_QF.outro;
   const dur = fmtDur(item.duracaoMin);
   const periodo = item.periodo && item.periodo !== 'qualquer' ? PERIODOS_QF[item.periodo] : null;
@@ -145,15 +147,20 @@ function ItemQF({ item, onConcluir, onRemover }) {
         <div className="flex items-center gap-2 mt-0.5">
           {dur && <span className="text-[10px] text-zinc-500">⏱ {dur}</span>}
           {periodo && <span className="text-[10px] text-zinc-500">· {periodo}</span>}
-          {item.feitoVezes > 0 && (
-            <span className="text-[10px] text-emerald-500/80">· feito {item.feitoVezes}×</span>
+          {feitoSemana > 0 && (
+            <span className="text-[10px] text-emerald-500/80">· {feitoSemana}× essa semana</span>
           )}
         </div>
       </div>
-      <button onClick={() => onConcluir(item.id)} title="Fiz isso!"
+      {/* Toggle "feito hoje": idempotente por dia. Verde sólido = feito; toque desfaz. */}
+      <button
+        onClick={() => onConcluir(item.id)}
+        title={feitoHoje ? 'Feito hoje — toque para desfazer' : 'Marcar que fiz hoje'}
         className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90"
-        style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' }}>
-        <Check size={14} className="text-emerald-400" />
+        style={feitoHoje
+          ? { background: 'rgba(34,197,94,0.9)', border: '1px solid rgba(34,197,94,1)' }
+          : { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)' }}>
+        <Check size={14} className={feitoHoje ? 'text-black' : 'text-emerald-400'} strokeWidth={feitoHoje ? 3 : 2} />
       </button>
       <button onClick={() => onRemover(item.id)} title="Remover"
         className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-zinc-700 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100">
@@ -167,6 +174,8 @@ function ItemQF({ item, onConcluir, onRemover }) {
 export default function QueroFazer({ queroFazer = [], onAdicionar, onConcluir, onRemover, onAbrirChat }) {
   const [adicionando, setAdicionando] = useState(false);
   const lista = queroFazer || [];
+  const hoje = hojeYMD();
+  const setSemana = useMemo(() => new Set(calcSemana(0).map(toYMD)), []);
 
   return (
     <div className="px-4 py-4 space-y-4 pb-8">
@@ -193,16 +202,27 @@ export default function QueroFazer({ queroFazer = [], onAdicionar, onConcluir, o
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold font-titulo transition-all active:scale-[0.98]"
           style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b' }}
         >
-          <Plus size={16} /> Adicionar algo que quero fazer
+          <Plus size={16} /> Adicionar algo que queira fazer
         </button>
       )}
 
       {/* Lista ou empty state */}
       {lista.length > 0 ? (
         <div className="space-y-2">
-          {lista.map((item) => (
-            <ItemQF key={item.id} item={item} onConcluir={onConcluir} onRemover={onRemover} />
-          ))}
+          {lista.map((item) => {
+            const feitoEm = Array.isArray(item.feitoEm) ? item.feitoEm : [];
+            const feitoSemana = feitoEm.filter(d => setSemana.has(d)).length;
+            return (
+              <ItemQF
+                key={item.id}
+                item={item}
+                feitoSemana={feitoSemana}
+                feitoHoje={feitoEm.includes(hoje)}
+                onConcluir={onConcluir}
+                onRemover={onRemover}
+              />
+            );
+          })}
         </div>
       ) : !adicionando && (
         <div className="text-center pt-6 pb-2 px-4">

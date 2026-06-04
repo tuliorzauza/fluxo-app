@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, ChevronRight, Plus } from 'lucide-react';
 import { CATEGORIAS_QF } from '../QueroFazer';
+import { hojeYMD } from '../../utils/planoUtils';
 
 // Converte "HH:MM" em minutos desde meia-noite
 function hhmm(str) {
@@ -19,10 +20,11 @@ function periodoDe(minutos) {
 
 // Cruza a lista "Quero Fazer" com um gap: cabe na duração E no período.
 // Prioriza o que foi feito há mais tempo (rotaciona as sugestões).
-function sugestoesPara(queroFazer, inicioEfetivoMin, duracaoRestante) {
+function sugestoesPara(queroFazer, inicioEfetivoMin, duracaoRestante, hojeStr) {
   const periodo = periodoDe(inicioEfetivoMin);
   return (queroFazer || [])
     .filter(q => q?.titulo)
+    .filter(q => !(Array.isArray(q.feitoEm) && q.feitoEm.includes(hojeStr))) // já feito hoje → some
     .filter(q => !q.duracaoMin || q.duracaoMin <= duracaoRestante)
     .filter(q => !q.periodo || q.periodo === 'qualquer' || q.periodo === periodo)
     .sort((a, b) => (a.ultimaVez || '0').localeCompare(b.ultimaVez || '0'))
@@ -167,7 +169,7 @@ export default function MicrointervalosCard({ plano, onAbrirChat, compromissosDo
                     // Sugestões do "Quero Fazer" que cabem nesse intervalo (duração + período)
                     const inicioEfetivo = Math.max(l.inicio, horaAtual);
                     const restante = l.fim - inicioEfetivo;
-                    const sugs = sugestoesPara(queroFazer, inicioEfetivo, restante);
+                    const sugs = sugestoesPara(queroFazer, inicioEfetivo, restante, hojeYMD());
                     if (sugs.length > 0) {
                       return (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">

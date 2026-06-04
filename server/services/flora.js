@@ -1362,7 +1362,7 @@ function parseFloraResponse(rawText) {
               duracaoMin: alt.item.duracaoMin ?? null,   // minutos mínimos úteis
               periodo: alt.item.periodo || 'qualquer',   // qualquer|manha|tarde|noite
               categoria: alt.item.categoria || 'outro',
-              feitoVezes: alt.item.feitoVezes || 0,
+              feitoEm: alt.item.feitoEm || [],           // datas YYYY-MM-DD (controle semanal)
               ultimaVez: alt.item.ultimaVez || null,
             },
           };

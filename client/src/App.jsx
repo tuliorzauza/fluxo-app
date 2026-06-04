@@ -982,7 +982,7 @@ export default function App() {
       duracaoMin: item.duracaoMin ?? null,
       periodo: item.periodo || 'qualquer',
       categoria: item.categoria || 'outro',
-      feitoVezes: 0,
+      feitoEm: [],     // datas YYYY-MM-DD — no máx 1 por dia (controle por semana)
       ultimaVez: null,
     };
     const novo = { ...base, queroFazer: [...lista, novoItem] };
@@ -1000,31 +1000,40 @@ export default function App() {
     salvarPlanoNoSupabase(novo);
   }, [plano, salvarPlanoNoSupabase]);
 
-  const concluirQueroFazer = useCallback((id) => {
+  // Marca/desmarca "feito HOJE" — idempotente por dia (resolve cliques repetidos)
+  // e permite desfazer um clique sem querer. Pontos só na transição p/ feito.
+  const toggleQueroFazerHoje = useCallback((id) => {
     if (!plano) return;
     const item = (plano.queroFazer || []).find(q => q.id === id);
     if (!item) return;
     const hoje = hojeYMD();
+    const feitoEm = Array.isArray(item.feitoEm) ? item.feitoEm : [];
+    const jaFeitoHoje = feitoEm.includes(hoje);
+    const novoFeitoEm = jaFeitoHoje ? feitoEm.filter(d => d !== hoje) : [...feitoEm, hoje];
+    const ultimaVez = novoFeitoEm.length ? [...novoFeitoEm].sort().slice(-1)[0] : null;
+
     const novo = {
       ...plano,
       queroFazer: (plano.queroFazer || []).map(q =>
-        q.id === id ? { ...q, feitoVezes: (q.feitoVezes || 0) + 1, ultimaVez: hoje } : q
+        q.id === id ? { ...q, feitoEm: novoFeitoEm, ultimaVez } : q
       ),
     };
     setPlano(novo);
     ls_set(SK.plano, novo);
     salvarPlanoNoSupabase(novo);
 
-    // Gamificação: aproveitar um momento livre vale pontos (como tarefa flexível)
-    const memoriaBase = memoria || { gamificacao: { ...GAM_INICIAL } };
-    const { memoriaAtualizada, delta } = processarEventoGamificacao(memoriaBase, 'tarefa_flexivel', {
-      descricao: `Quero Fazer: ${item.titulo}`,
-    });
-    adicionarAnimacao(delta);
-    verificarLevelUp(memoria, memoriaAtualizada, perfil?.nome);
-    setMemoria(memoriaAtualizada);
-    ls_set(SK.memoria, memoriaAtualizada);
-    track('quero_fazer_feito', { categoria: item.categoria });
+    // Só pontua ao MARCAR (não ao desfazer)
+    if (!jaFeitoHoje) {
+      const memoriaBase = memoria || { gamificacao: { ...GAM_INICIAL } };
+      const { memoriaAtualizada, delta } = processarEventoGamificacao(memoriaBase, 'tarefa_flexivel', {
+        descricao: `Tempo Livre: ${item.titulo}`,
+      });
+      adicionarAnimacao(delta);
+      verificarLevelUp(memoria, memoriaAtualizada, perfil?.nome);
+      setMemoria(memoriaAtualizada);
+      ls_set(SK.memoria, memoriaAtualizada);
+      track('quero_fazer_feito', { categoria: item.categoria });
+    }
   }, [plano, memoria, perfil, salvarPlanoNoSupabase, adicionarAnimacao, verificarLevelUp]);
 
   // ── Adicionar compromisso direto pelo calendário ────────────────────────
@@ -1520,19 +1529,19 @@ export default function App() {
 
       {/* ── Tabs ────────────────────────────────────────────────────────── */}
       <div
-        className="flex flex-shrink-0 px-4 pt-2 pb-0 gap-1"
+        className="flex flex-shrink-0 px-4 pt-2 pb-0 gap-1 overflow-x-auto hide-scrollbar"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
       >
         {[
-          { id: 'chat',       label: 'Chat',   icon: MessageSquare },
-          { id: 'plano',      label: 'Plano',  icon: CalendarDays  },
-          { id: 'rotina',     label: 'Rotina', icon: Clock         },
-          { id: 'querofazer', label: 'Quero',  icon: Sparkles      },
+          { id: 'chat',       label: 'Chat',        icon: MessageSquare },
+          { id: 'plano',      label: 'Plano',       icon: CalendarDays  },
+          { id: 'rotina',     label: 'Rotina',      icon: Clock         },
+          { id: 'querofazer', label: 'Tempo Livre', icon: Sparkles      },
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setAba(id)}
-            className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold font-titulo transition-all duration-150 rounded-t-lg relative"
+            className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold font-titulo transition-all duration-150 rounded-t-lg relative"
             style={{
               color: aba === id ? '#f59e0b' : '#52525b',
               background: aba === id ? 'rgba(245,158,11,0.06)' : 'transparent',
@@ -1627,7 +1636,7 @@ export default function App() {
               onEditarItem={editarItem}
               onDeletarItem={deletarItem}
               onAdicionarCompromisso={adicionarCompromisso}
-              onConcluirQueroFazer={concluirQueroFazer}
+              onConcluirQueroFazer={toggleQueroFazerHoje}
               onIrQueroFazer={() => setAba('querofazer')}
               onVerPlano={() => setAba('chat')}
             />
@@ -1662,7 +1671,7 @@ export default function App() {
             <QueroFazer
               queroFazer={plano?.queroFazer || []}
               onAdicionar={adicionarQueroFazer}
-              onConcluir={concluirQueroFazer}
+              onConcluir={toggleQueroFazerHoje}
               onRemover={removerQueroFazer}
               onAbrirChat={() => setAba('chat')}
             />
